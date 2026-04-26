@@ -1,0 +1,6 @@
+{
+  "name": "Medlink HMS",
+  "description": "A comprehensive Hospital Management System featuring role-based access control, patient management, doctor modules, and real-time inventory tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
