@@ -192,6 +192,7 @@ export default function DoctorDashboard({ user }: { user: any }) {
         {selectedConsult && (
           <ConsultationModal
             patient={selectedConsult}
+            doctorName={user?.name}
             onClose={() => setSelectedConsult(null)}
             onComplete={() => { setSelectedConsult(null); fetchReferred(); }}
           />
@@ -355,8 +356,21 @@ function mapUnitToDrugType(unit: string): string {
   return 'Tablet';
 }
 
+function buildInstructions(p: any): string {
+  if (!p.name) return '';
+  const freqLabel = FREQ_OPTIONS.find(f => String(f.value) === String(p.frequency))?.label || '';
+  if (UNIT_QTY_TYPES.includes(p.drug_type)) {
+    return p.duration ? `Use for ${p.duration} day${Number(p.duration) !== 1 ? 's' : ''} as directed` : 'Use as directed';
+  }
+  const dose = Number(p.dose_qty) || 1;
+  const parts = [`Take ${dose} ${p.drug_type?.toLowerCase() || 'tablet'}${dose > 1 ? 's' : ''}`];
+  if (freqLabel) parts.push(freqLabel.toLowerCase());
+  if (p.duration) parts.push(`for ${p.duration} day${Number(p.duration) !== 1 ? 's' : ''}`);
+  return parts.join(' ');
+}
+
 /* ─── Consultation Modal ─── */
-function ConsultationModal({ patient, onClose, onComplete }: { patient: any; onClose: () => void; onComplete: () => void }) {
+function ConsultationModal({ patient, doctorName, onClose, onComplete }: { patient: any; doctorName?: string; onClose: () => void; onComplete: () => void }) {
   const isResultsReady = patient.queue_status === 'results_ready';
 
   /* Form state */
@@ -431,6 +445,48 @@ function ConsultationModal({ patient, onClose, onComplete }: { patient: any; onC
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
+  };
+
+  const printOutOfStockNotice = () => {
+    const outOfStock = prescriptions.filter(p => p.in_stock === false && p.name);
+    if (!outOfStock.length) return;
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+    const rows = outOfStock.map((d, i) => {
+      const qty = calcQty(d.drug_type, d.dose_qty, d.frequency, d.duration);
+      return `<tr>
+        <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;">${i + 1}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-weight:700;">${d.name}${d.measurement ? ' ' + d.measurement : ''}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;">${d.drug_type}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:center;font-weight:700;">${qty > 0 ? qty : 1}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:11px;color:#555;">${buildInstructions(d)}</td>
+      </tr>`;
+    }).join('');
+    const win = window.open('', '_blank', 'width=720,height=640');
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Drug Procurement Notice</title>
+      <style>body{font-family:Arial,sans-serif;padding:40px;color:#1a1a2e;max-width:700px;}h2{font-size:17px;font-weight:800;margin:0;}table{width:100%;border-collapse:collapse;margin-top:16px;}th{background:#f5f7f9;padding:8px 14px;text-align:left;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;}@media print{.no-print{display:none!important}}</style>
+    </head><body>
+    <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #0d9488;padding-bottom:14px;margin-bottom:20px;">
+      <div><h2>MEDLINK HMS</h2><p style="margin:3px 0 0;font-size:12px;color:#666;font-weight:600;">Drug Procurement Notice — Out of Stock</p></div>
+      <div style="text-align:right;font-size:11px;color:#888;">${today}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;background:#f9fafb;padding:14px;border-radius:8px;">
+      <div><div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:3px;">Patient</div><div style="font-weight:700;">${patient.name}</div><div style="font-size:11px;color:#666;">${patient.patient_id || ''}</div></div>
+      <div><div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:3px;">Prescribed By</div><div style="font-weight:700;">${doctorName || 'Attending Doctor'}</div></div>
+    </div>
+    <p style="font-size:13px;color:#333;margin-bottom:8px;">The following medications have been prescribed but are <strong>currently out of stock</strong>. Please arrange urgent procurement or advise suitable substitutes:</p>
+    <table>
+      <thead><tr><th>#</th><th>Drug</th><th>Form</th><th>Qty Needed</th><th>Dosage Instructions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+      <div style="border-top:1px solid #ccc;padding-top:10px;"><div style="font-size:10px;color:#888;">Prescribing Doctor</div><div style="font-weight:700;margin-top:20px;">${doctorName || 'Attending Doctor'}</div></div>
+      <div style="border-top:1px solid #ccc;padding-top:10px;"><div style="font-size:10px;color:#888;">Date Issued</div><div style="font-weight:700;margin-top:4px;">${today}</div></div>
+    </div>
+    <div class="no-print" style="text-align:center;margin-top:28px;">
+      <button onclick="window.print()" style="background:#0d9488;color:#fff;border:none;padding:10px 36px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Print / Save PDF</button>
+    </div></body></html>`);
+    win.document.close();
   };
 
   const handleSendLabs = async () => {
@@ -788,26 +844,28 @@ function ConsultationModal({ patient, onClose, onComplete }: { patient: any; onC
                   <div className="flex items-center gap-2">
                     <Pill className="w-4 h-4 text-primary-500" />
                     <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Prescriptions</h4>
+                    {prescriptions.length > 0 && (
+                      <span className="bg-primary-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full">{prescriptions.length}</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     {!rxSent && (
-                    <>
-                      <button
-                        onClick={handleSendRx}
-                        disabled={sendingRx || !prescriptions.filter(p => p.name).length}
-                        className="text-blue-600 text-[10px] font-black uppercase tracking-wider hover:text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-50 disabled:opacity-40 flex items-center gap-1 transition-colors"
-                      >
-                        {sendingRx ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Send to Pharmacy
-                      </button>
-                      <button onClick={addRx} className="text-primary-600 text-[10px] font-black uppercase tracking-wider hover:text-primary-700 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors">
-                        + Add Drug
-                      </button>
-                    </>
-                  )}
+                      <>
+                        <button
+                          onClick={handleSendRx}
+                          disabled={sendingRx || !prescriptions.filter(p => p.name).length}
+                          className="text-blue-600 text-[10px] font-black uppercase tracking-wider hover:text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-50 disabled:opacity-40 flex items-center gap-1 transition-colors"
+                        >
+                          {sendingRx ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Send to Pharmacy
+                        </button>
+                        <button onClick={addRx} className="text-primary-600 text-[10px] font-black uppercase tracking-wider hover:text-primary-700 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors">
+                          + Add Drug
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
-                {/* Sent: confirmation view */}
                 {rxSent ? (
                   <div>
                     <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 mb-3">
@@ -817,124 +875,191 @@ function ConsultationModal({ patient, onClose, onComplete }: { patient: any; onC
                         <p className="text-xs text-emerald-600 mt-0.5">{sentPrescriptions.length} drug(s) queued for dispensing</p>
                       </div>
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {sentPrescriptions.map((p, i) => (
-                        <div key={i} className="flex items-center gap-3 bg-white/60 rounded-xl px-4 py-2.5 border border-emerald-100/50">
-                          <span className="text-xs font-bold text-slate-700 flex-1">{p.name}{p.measurement ? ` ${p.measurement}` : ''}</span>
-                          <span className="text-[10px] text-slate-400">{p.drug_type}</span>
-                          {p.duration && <span className="text-[10px] text-slate-400">{p.dose_qty}× {p.frequency}× daily · {p.duration}d</span>}
+                        <div key={i} className="flex items-center gap-3 bg-white/70 rounded-xl px-4 py-2.5 border border-emerald-100/50">
+                          <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 text-[9px] font-black flex items-center justify-center shrink-0">{i + 1}</div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-xs font-bold text-slate-700">{p.name}{p.measurement ? ` ${p.measurement}` : ''}</span>
+                            <span className="text-[10px] text-slate-400 ml-2">· {p.drug_type}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 shrink-0">{buildInstructions(p)}</span>
                         </div>
                       ))}
                     </div>
                   </div>
                 ) : (
-                  <>{prescriptions.length === 0 && <p className="text-xs text-slate-400 italic text-center py-3">No drugs prescribed yet.</p>}
-                <div className="space-y-3">
-                  {prescriptions.map((p, i) => {
-                    const isUnitQty = UNIT_QTY_TYPES.includes(p.drug_type);
-                    const qty = calcQty(p.drug_type, p.dose_qty, p.frequency, p.duration);
-                    const suggestions = getSuggestions(p.name);
-                    return (
-                      <div key={i} className="glass-dark rounded-2xl p-4 space-y-3">
-                        {/* Row 1: Name + Measurement + Type + Stock badge + Remove */}
-                        <div className="flex gap-2 items-center">
-                          <div className="relative flex-1">
-                            <input
-                              value={p.name}
-                              onChange={e => { updateRx(prescriptions, i, { name: e.target.value, in_stock: null, inventory_id: null }, setPrescriptions); setOpenDropdownIdx(i); }}
-                              onFocus={() => setOpenDropdownIdx(i)}
-                              onBlur={() => setTimeout(() => setOpenDropdownIdx(null), 150)}
-                              placeholder="Drug name"
-                              className={`${inputCls} w-full`}
-                            />
-                            {openDropdownIdx === i && suggestions.length > 0 && (
-                              <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
-                                {suggestions.map((item: any) => (
-                                  <button key={item.id} type="button"
-                                    onMouseDown={() => {
-                                      updateRx(prescriptions, i, {
-                                        name: item.name,
-                                        measurement: extractMeasurement(item.name),
-                                        drug_type: mapUnitToDrugType(item.unit),
-                                        inventory_id: item.id,
-                                        in_stock: item.quantity > 0,
-                                      }, setPrescriptions);
-                                      setOpenDropdownIdx(null);
-                                    }}
-                                    className="w-full px-4 py-2.5 text-left hover:bg-primary-50 flex justify-between items-center border-b border-gray-50 last:border-0"
-                                  >
-                                    <div>
-                                      <span className="text-xs font-bold text-gray-800">{item.name}</span>
-                                      <span className="text-[10px] text-gray-400 ml-2">{item.unit}</span>
+                  <>
+                    {prescriptions.length === 0 && (
+                      <div className="text-center py-6">
+                        <Pill className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                        <p className="text-xs text-slate-400 italic">No drugs prescribed yet. Click "+ Add Drug" to begin.</p>
+                      </div>
+                    )}
+                    <div className="space-y-3">
+                      {prescriptions.map((p, i) => {
+                        const isUnitQty = UNIT_QTY_TYPES.includes(p.drug_type);
+                        const qty = calcQty(p.drug_type, p.dose_qty, p.frequency, p.duration);
+                        const suggestions = getSuggestions(p.name);
+                        const instructions = buildInstructions(p);
+                        return (
+                          <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-visible">
+                            {/* Row 1: Drug name + strength + form + remove */}
+                            <div className="p-3.5 flex gap-2 items-center">
+                              <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-600 text-[10px] font-black flex items-center justify-center shrink-0">
+                                {i + 1}
+                              </div>
+                              <div className="relative flex-1 min-w-0">
+                                <input
+                                  value={p.name}
+                                  onChange={e => { updateRx(prescriptions, i, { name: e.target.value, in_stock: null, inventory_id: null }, setPrescriptions); setOpenDropdownIdx(i); }}
+                                  onFocus={() => setOpenDropdownIdx(i)}
+                                  onBlur={() => setTimeout(() => setOpenDropdownIdx(null), 150)}
+                                  placeholder="Drug name — type to search inventory"
+                                  className={`${inputCls} w-full`}
+                                />
+                                {openDropdownIdx === i && suggestions.length > 0 && (
+                                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
+                                    {suggestions.map((item: any) => (
+                                      <button key={item.id} type="button"
+                                        onMouseDown={() => {
+                                          updateRx(prescriptions, i, {
+                                            name: item.name,
+                                            measurement: extractMeasurement(item.name),
+                                            drug_type: mapUnitToDrugType(item.unit),
+                                            inventory_id: item.id,
+                                            in_stock: item.quantity > 0,
+                                          }, setPrescriptions);
+                                          setOpenDropdownIdx(null);
+                                        }}
+                                        className="w-full px-4 py-2.5 text-left hover:bg-primary-50 flex justify-between items-center border-b border-gray-50 last:border-0"
+                                      >
+                                        <div>
+                                          <span className="text-xs font-bold text-gray-800">{item.name}</span>
+                                          <span className="text-[10px] text-gray-400 ml-2">{item.unit}</span>
+                                        </div>
+                                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded ml-2 shrink-0 ${item.quantity > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
+                                          {item.quantity > 0 ? `${item.quantity} in stock` : 'Out of stock'}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <input
+                                value={p.measurement}
+                                onChange={e => updateRx(prescriptions, i, { measurement: e.target.value }, setPrescriptions)}
+                                placeholder="Strength"
+                                className={`${inputCls} w-24`}
+                              />
+                              <select
+                                value={p.drug_type}
+                                onChange={e => updateRx(prescriptions, i, { drug_type: e.target.value }, setPrescriptions)}
+                                className={`${inputCls} w-28`}
+                              >
+                                {DRUG_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                              </select>
+                              <button onClick={() => removeRx(i)} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 shrink-0 transition-colors">
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {/* Row 2: Dosage */}
+                            <div className="px-3.5 pb-3.5 pt-3 flex gap-3 items-end border-t border-gray-50 bg-slate-50/40">
+                              {isUnitQty ? (
+                                <>
+                                  <div className="flex-1">
+                                    <label className={labelCls}>Instructions / Duration</label>
+                                    <input
+                                      value={p.duration}
+                                      onChange={e => updateRx(prescriptions, i, { duration: e.target.value }, setPrescriptions)}
+                                      placeholder="e.g. Apply twice daily for 5 days"
+                                      className={inputCls}
+                                    />
+                                  </div>
+                                  <div className="bg-blue-50 text-blue-600 px-3 py-2 rounded-xl text-[10px] font-black shrink-0">
+                                    Qty: 1 unit
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="w-20">
+                                    <label className={labelCls}>Dose</label>
+                                    <input
+                                      type="number" min="1" value={p.dose_qty}
+                                      onChange={e => updateRx(prescriptions, i, { dose_qty: e.target.value }, setPrescriptions)}
+                                      placeholder="1" className={inputCls}
+                                    />
+                                  </div>
+                                  <div className="flex-1">
+                                    <label className={labelCls}>Frequency</label>
+                                    <select
+                                      value={p.frequency}
+                                      onChange={e => updateRx(prescriptions, i, { frequency: e.target.value }, setPrescriptions)}
+                                      className={inputCls}
+                                    >
+                                      {FREQ_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                                    </select>
+                                  </div>
+                                  <div className="w-20">
+                                    <label className={labelCls}>Days</label>
+                                    <input
+                                      type="number" min="1" value={p.duration}
+                                      onChange={e => updateRx(prescriptions, i, { duration: e.target.value }, setPrescriptions)}
+                                      placeholder="5" className={inputCls}
+                                    />
+                                  </div>
+                                  <div className="shrink-0 text-center w-16">
+                                    <div className={labelCls}>Total Qty</div>
+                                    <div className={`py-2 rounded-xl text-xs font-black text-center ${qty > 0 ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                                      {qty > 0 ? qty : '—'}
                                     </div>
-                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded ml-2 flex-shrink-0 ${item.quantity > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
-                                      {item.quantity > 0 ? `${item.quantity} in stock` : 'Out of stock'}
-                                    </span>
-                                  </button>
-                                ))}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+
+                            {/* Row 3: Instructions preview */}
+                            {instructions && (
+                              <div className="px-3.5 py-2 bg-slate-50 border-t border-gray-100 flex items-center gap-2 rounded-b-2xl">
+                                <span className="text-[9px] font-black text-slate-400 uppercase shrink-0">Rx:</span>
+                                <span className="text-[10px] text-slate-600">{instructions}</span>
                               </div>
                             )}
                           </div>
-                          <input
-                            value={p.measurement}
-                            onChange={e => updateRx(prescriptions, i, { measurement: e.target.value }, setPrescriptions)}
-                            placeholder="e.g. 500mg"
-                            className={`${inputCls} w-24`}
-                          />
-                          <select
-                            value={p.drug_type}
-                            onChange={e => updateRx(prescriptions, i, { drug_type: e.target.value }, setPrescriptions)}
-                            className={`${inputCls} w-28`}
+                        );
+                      })}
+                    </div>
+
+                    {/* Consolidated out-of-stock notice */}
+                    {prescriptions.filter(p => p.in_stock === false && p.name).length > 0 && (
+                      <div className="bg-red-50 border border-red-100 rounded-2xl p-4 mt-3">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                            <h5 className="text-[10px] font-black text-red-600 uppercase tracking-widest">Out of Stock — Procurement Notice</h5>
+                          </div>
+                          <button
+                            onClick={printOutOfStockNotice}
+                            className="flex items-center gap-1.5 text-[10px] font-black text-red-600 border border-red-200 bg-white hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors"
                           >
-                            {DRUG_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                          </select>
-                          {p.in_stock === true && <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg flex-shrink-0">✓ In stock</span>}
-                          {p.in_stock === false && <span className="text-[9px] font-bold text-red-500 bg-red-50 px-2 py-1 rounded-lg flex-shrink-0">✕ No stock</span>}
-                          <button onClick={() => removeRx(i)} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 flex-shrink-0 transition-colors">
-                            <X className="w-4 h-4"/>
+                            <FileText className="w-3 h-3" /> Print Notice
                           </button>
                         </div>
-                        {/* Row 2: Dosage */}
-                        {isUnitQty ? (
-                          <div className="flex items-center gap-2">
-                            <span className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-bold text-[10px] flex-shrink-0">Qty: 1 (one pack/bottle)</span>
-                            <input value={p.duration} onChange={e => updateRx(prescriptions, i, { duration: e.target.value }, setPrescriptions)}
-                              placeholder="Duration (e.g. 5 days)" className={`${inputCls} flex-1`} />
-                          </div>
-                        ) : (
-                          <div className="flex gap-2 items-center">
-                            <div className="flex-1">
-                              <label className={labelCls}>Dose</label>
-                              <input type="number" min="1" value={p.dose_qty}
-                                onChange={e => updateRx(prescriptions, i, { dose_qty: e.target.value }, setPrescriptions)}
-                                placeholder="e.g. 2" className={inputCls} />
-                            </div>
-                            <div className="flex-1">
-                              <label className={labelCls}>Frequency</label>
-                              <select value={p.frequency}
-                                onChange={e => updateRx(prescriptions, i, { frequency: e.target.value }, setPrescriptions)}
-                                className={inputCls}>
-                                {FREQ_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-                              </select>
-                            </div>
-                            <div className="flex-1">
-                              <label className={labelCls}>Days</label>
-                              <input type="number" min="1" value={p.duration}
-                                onChange={e => updateRx(prescriptions, i, { duration: e.target.value }, setPrescriptions)}
-                                placeholder="e.g. 5" className={inputCls} />
-                            </div>
-                            <div className="flex-shrink-0 text-center">
-                              <label className={labelCls}>Qty</label>
-                              <div className={`px-4 py-2 rounded-xl text-xs font-black ${qty > 0 ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                                {qty > 0 ? qty : '—'}
+                        <div className="space-y-1.5 mb-3">
+                          {prescriptions.filter(p => p.in_stock === false && p.name).map((p, i) => {
+                            const qty = calcQty(p.drug_type, p.dose_qty, p.frequency, p.duration);
+                            return (
+                              <div key={i} className="flex items-center justify-between text-xs bg-white rounded-lg px-3 py-2 border border-red-100/50">
+                                <span className="font-bold text-gray-800">{p.name}{p.measurement ? ` ${p.measurement}` : ''}</span>
+                                <span className="text-gray-500 text-[10px]">{p.drug_type} · Qty needed: {qty > 0 ? qty : 1}</span>
                               </div>
-                            </div>
-                          </div>
-                        )}
+                            );
+                          })}
+                        </div>
+                        <p className="text-[10px] text-red-400">These drugs will still be sent to pharmacy — pharmacist will arrange procurement or substitution.</p>
                       </div>
-                    );
-                  })}
-                </div>
+                    )}
                   </>
                 )}
               </div>

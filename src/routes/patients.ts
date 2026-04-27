@@ -165,6 +165,28 @@ router.get('/referred', authenticateToken, async (req, res) => {
   }
 });
 
+// GET full patient profile (patient + vitals + consultations + prescriptions + appointments)
+router.get('/:id/profile', authenticateToken, async (req, res) => {
+  try {
+    const Consultation = (await import('../models/Consultation.js')).default;
+    const Prescription = (await import('../models/Prescription.js')).default;
+    const Appointment = (await import('../models/Appointment.js')).default;
+
+    const [patient, vitalsHistory, consultations, prescriptions, appointments] = await Promise.all([
+      Patient.findById(req.params.id).lean(),
+      Vitals.find({ patient: req.params.id }).sort({ createdAt: -1 }).limit(10).lean(),
+      Consultation.find({ patient: req.params.id }).populate('doctor', 'name').sort({ createdAt: -1 }).limit(20).lean(),
+      (Prescription as any).find({ patient: req.params.id }).populate('doctor', 'name').sort({ createdAt: -1 }).limit(20).lean(),
+      (Appointment as any).find({ patient: req.params.id }).populate('doctor', 'name').sort({ date: -1 }).lean(),
+    ]);
+
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+    res.json({ patient, vitalsHistory, consultations, prescriptions, appointments });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET patient medical history
 router.get('/:id/history', authenticateToken, async (req, res) => {
   try {

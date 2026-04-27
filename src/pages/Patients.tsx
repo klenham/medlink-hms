@@ -5,13 +5,13 @@ import {
   Plus,
   Download,
   Phone,
-  ArrowRight,
   Activity,
-  Info
+  Info,
+  User,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
-import MedicalHistory from '../components/MedicalHistory';
+import PatientProfile from '../components/PatientProfile';
 import HospitalUpdates from '../components/HospitalUpdates';
 import CCCAlerts from '../components/CCCAlerts';
 import { AnimatePresence, motion } from 'motion/react';
@@ -32,7 +32,7 @@ export default function Patients() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [dateFilter, setDateFilter] = useState('');
   const [loading, setLoading] = useState(true);
-  const [selectedPatient, setSelectedPatient] = useState<any>(null);
+  const [showProfilePanel, setShowProfilePanel] = useState<any>(null);
   const [showRegModal, setShowRegModal] = useState(false);
   const [showVitalsModal, setShowVitalsModal] = useState<any>(null);
   const [saving, setSaving] = useState(false);
@@ -277,38 +277,21 @@ export default function Patients() {
                   </td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {patient.status === 'triage' || !patient.status ? (
-                        <button
-                          onClick={() => { setShowVitalsModal(patient); setVitals({ bp: '', temperature: '', weight: '', pulse: '', spo2: '', ccc: '', ccc_status: 'generated' }); }}
-                          className="flex items-center gap-2 bg-teal-500 text-white font-bold text-[10px] px-3 py-2 rounded-lg hover:bg-teal-600 transition-all shadow-md shadow-teal-500/20"
-                        >
-                          <Activity className="w-3.5 h-3.5" />
-                          REFER TO DOCTOR
-                        </button>
-                      ) : (
-                        <span className={cn(
-                          'flex items-center gap-1.5 text-[10px] font-black px-3 py-2 rounded-lg',
-                          patient.status === 'consultation' ? 'bg-teal-50 text-teal-600' :
-                          patient.status === 'laboratory'   ? 'bg-indigo-50 text-indigo-600' :
-                          patient.status === 'pharmacy'     ? 'bg-purple-50 text-purple-600' :
-                          patient.status === 'billing'      ? 'bg-emerald-50 text-emerald-600' :
-                          'bg-slate-50 text-slate-500'
-                        )}>
-                          <Activity className="w-3.5 h-3.5" />
-                          {patient.status === 'consultation' ? 'WITH DOCTOR' :
-                           patient.status === 'laboratory'   ? 'IN LAB' :
-                           patient.status === 'pharmacy'     ? 'IN PHARMACY' :
-                           patient.status === 'billing'      ? 'AT BILLING' :
-                           patient.status === 'discharged'   ? 'DISCHARGED' :
-                           patient.status.toUpperCase()}
-                        </span>
-                      )}
                       <button
-                        onClick={() => setSelectedPatient(patient)}
-                        className="p-2 text-gray-400 hover:text-teal-500 hover:bg-teal-50 rounded-lg transition-all"
-                        title="View Medical History"
+                        onClick={() => { setShowVitalsModal(patient); setVitals({ bp: '', temperature: '', weight: '', pulse: '', spo2: '', ccc: '', ccc_status: 'generated' }); }}
+                        className="flex items-center gap-1.5 bg-teal-500 text-white font-bold text-[10px] px-3 py-2 rounded-lg hover:bg-teal-600 transition-all shadow-md shadow-teal-500/20"
+                        title="Take Vitals / Create Visit"
                       >
-                        <ArrowRight className="w-5 h-5" />
+                        <Activity className="w-3.5 h-3.5" />
+                        TAKE VITALS
+                      </button>
+                      <button
+                        onClick={() => setShowProfilePanel(patient)}
+                        className="flex items-center gap-1.5 bg-primary-50 text-primary-600 font-bold text-[10px] px-3 py-2 rounded-lg hover:bg-primary-100 transition-all border border-primary-100"
+                        title="View Patient Profile"
+                      >
+                        <User className="w-3.5 h-3.5" />
+                        PROFILE
                       </button>
                     </div>
                   </td>
@@ -601,10 +584,16 @@ export default function Patients() {
           </div>
         )}
 
-        {selectedPatient && (
-          <MedicalHistory
-            patient={selectedPatient}
-            onClose={() => setSelectedPatient(null)}
+        {showProfilePanel && (
+          <PatientProfile
+            patientId={showProfilePanel._id || showProfilePanel.id}
+            patient={showProfilePanel}
+            onClose={() => setShowProfilePanel(null)}
+            onTakeVitals={(pt) => {
+              setShowProfilePanel(null);
+              setShowVitalsModal(pt);
+              setVitals({ bp: '', temperature: '', weight: '', pulse: '', spo2: '', ccc: '', ccc_status: 'generated' });
+            }}
           />
         )}
       </AnimatePresence>
