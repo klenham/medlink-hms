@@ -34,10 +34,12 @@ const STATUS_COLORS: Record<string, string> = {
 
 const dosageLabel = (m: any) => {
   const parts: string[] = [];
-  if (m.drug_type) parts.push(m.drug_type);
-  if (m.dose_qty && m.frequency) parts.push(`${m.dose_qty} × ${m.frequency}/day`);
+  if (m.dosage) parts.push(m.dosage);
+  else if (m.drug_type) parts.push(m.drug_type);
+  if (m.frequency) parts.push(`${m.frequency}×/day`);
+  else if (m.dose_qty) parts.push(`${m.dose_qty}/day`);
   if (m.duration) parts.push(`${m.duration} day${Number(m.duration) !== 1 ? 's' : ''}`);
-  return parts.join(' · ') || m.dosage || 'As directed';
+  return parts.join(' · ') || 'As directed';
 };
 
 type Tab = 'overview' | 'history' | 'medications' | 'appointments';
@@ -137,7 +139,7 @@ export default function PatientProfile({ patientId, patient: basicPatient, onClo
                 <div className="flex items-start gap-3 text-sm">
                   <Users className="w-4 h-4 text-teal-500 shrink-0 mt-0.5" />
                   <div>
-                    <div className="text-[9px] text-gray-400 font-black uppercase mb-0.5">Next of Kin</div>
+                    <div className="text-[9px] text-gray-400 font-black uppercase mb-0.5">Nearest Relative</div>
                     <div className="font-medium text-gray-700 text-xs">{pt.next_of_kin}</div>
                   </div>
                 </div>
@@ -369,9 +371,12 @@ export default function PatientProfile({ patientId, patient: basicPatient, onClo
                           <tbody className="divide-y divide-gray-50">
                             {rx.medications.map((m: any, i: number) => (
                               <tr key={i}>
-                                <td className="py-2 font-bold text-gray-800">{m.name}</td>
+                                <td className="py-2 font-bold text-gray-800">
+                                  {m.drug_name || m.name}
+                                  {m.instructions && <div className="text-[9px] text-gray-400 italic font-normal mt-0.5">{m.instructions}</div>}
+                                </td>
                                 <td className="py-2 text-gray-500">{dosageLabel(m)}</td>
-                                <td className="py-2 text-gray-600">{m.qty || '—'}</td>
+                                <td className="py-2 text-gray-600">{m.quantity || m.qty || '—'}</td>
                               </tr>
                             ))}
                           </tbody>

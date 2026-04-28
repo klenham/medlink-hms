@@ -17,7 +17,17 @@ import CCCAlerts from '../components/CCCAlerts';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
 
-const RELIGIONS = ['Christianity', 'Islam', 'Traditional', 'Catholic', 'Seventh-day Adventist', 'Pentecostal', 'Other'];
+const RELIGIONS = ['Christianity', 'Islam', 'Traditional/African Religion', 'Hinduism', 'Buddhism', 'Other', 'Prefer not to say'];
+
+const calcAge = (dob: string) => {
+  if (!dob) return null;
+  const birth = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age >= 0 ? age : null;
+};
 
 const defaultPatient = {
   surname: '', other_names: '', date_of_birth: '', gender: 'Male',
@@ -82,6 +92,8 @@ export default function Patients() {
       setShowRegModal(false);
       setNewPatient(defaultPatient);
       setNhisMode('none');
+      setVitals({ bp: '', temperature: '', weight: '', pulse: '', spo2: '', ccc: '', ccc_status: 'generated' });
+      setShowVitalsModal({ _id: data.id, id: data.id, name: data.name, nhis_number: payload.nhis_number });
       fetchPatients();
     } catch (err: any) {
       toast.error(err.message);
@@ -339,6 +351,9 @@ export default function Patients() {
                       onChange={e => setNewPatient({ ...newPatient, date_of_birth: e.target.value })}
                       className="w-full bg-surface-50 rounded-xl py-3 px-4 mt-1 outline-none focus:ring-2 focus:ring-primary-500 border-none"
                     />
+                    {newPatient.date_of_birth && calcAge(newPatient.date_of_birth) !== null && (
+                      <p className="text-[11px] text-teal-600 font-bold mt-1">Age: {calcAge(newPatient.date_of_birth)} years</p>
+                    )}
                   </div>
                   <div>
                     <label className="text-xs font-bold text-slate-400 uppercase">Gender</label>
@@ -349,6 +364,7 @@ export default function Patients() {
                     >
                       <option>Male</option>
                       <option>Female</option>
+                      <option>Other</option>
                     </select>
                   </div>
                   <div>
@@ -358,6 +374,7 @@ export default function Patients() {
                       onChange={e => setNewPatient({ ...newPatient, marital_status: e.target.value })}
                       className="w-full bg-surface-50 rounded-xl py-3 px-4 mt-1 outline-none focus:ring-2 focus:ring-primary-500 border-none"
                     >
+                      <option>Not Specified</option>
                       <option>Single</option>
                       <option>Married</option>
                       <option>Divorced</option>
@@ -407,25 +424,29 @@ export default function Patients() {
                   />
                 </div>
 
-                {/* Insurance */}
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Insurance Type</label>
-                  <select
-                    value={nhisMode === 'none' ? 'private' : 'nhis'}
-                    onChange={e => {
-                      if (e.target.value === 'private') {
-                        setNhisMode('none');
-                        setNewPatient({ ...newPatient, nhis_number: '' });
-                      } else {
-                        setNhisMode('active');
-                        setNewPatient({ ...newPatient, nhis_number: '' });
-                      }
+                {/* Insurance toggle */}
+                <div className="flex items-center justify-between p-4 bg-surface-50 rounded-xl">
+                  <div>
+                    <p className="text-sm font-bold text-slate-700">National Health Insurance (NHIS)</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Patient has active NHIS coverage</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = nhisMode === 'none' ? 'active' : 'none';
+                      setNhisMode(next);
+                      if (next === 'none') setNewPatient(p => ({ ...p, nhis_number: '' }));
                     }}
-                    className="w-full bg-surface-50 rounded-xl py-3 px-4 mt-1 outline-none focus:ring-2 focus:ring-primary-500 border-none"
+                    className={cn(
+                      'relative w-12 h-6 rounded-full transition-colors flex-shrink-0',
+                      nhisMode !== 'none' ? 'bg-teal-500' : 'bg-slate-200'
+                    )}
                   >
-                    <option value="private">Private / Self-Paying</option>
-                    <option value="nhis">NHIS (National Health Insurance)</option>
-                  </select>
+                    <span className={cn(
+                      'absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform',
+                      nhisMode !== 'none' ? 'translate-x-6' : 'translate-x-0'
+                    )} />
+                  </button>
                 </div>
 
                 {nhisMode !== 'none' && (
@@ -454,10 +475,10 @@ export default function Patients() {
                   </motion.div>
                 )}
 
-                {/* Next of Kin */}
+                {/* Nearest Relative */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-bold text-slate-400 uppercase">Next of Kin — Name</label>
+                    <label className="text-xs font-bold text-slate-400 uppercase">Nearest Relative — Name</label>
                     <input
                       type="text" value={newPatient.next_of_kin_name}
                       onChange={e => setNewPatient({ ...newPatient, next_of_kin_name: e.target.value })}
@@ -466,7 +487,7 @@ export default function Patients() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-slate-400 uppercase">Next of Kin — Phone</label>
+                    <label className="text-xs font-bold text-slate-400 uppercase">Nearest Relative — Phone</label>
                     <input
                       type="tel" value={newPatient.next_of_kin_phone}
                       onChange={e => setNewPatient({ ...newPatient, next_of_kin_phone: e.target.value })}

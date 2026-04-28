@@ -61,14 +61,17 @@ router.post('/vitals', authenticateToken, async (req: any, res) => {
   const { patient_id, bp, temperature, weight, pulse, spo2, ccc, ccc_status } = req.body;
   if (!patient_id) return res.status(400).json({ error: 'Patient ID is required' });
 
-  // Enforce 5-digit CCC when card is active
-  if (ccc_status === 'generated') {
-    if (!ccc || !/^\d{5}$/.test(String(ccc))) {
-      return res.status(400).json({ error: 'CCC must be exactly 5 digits for an active NHIS card' });
-    }
-  }
-
   try {
+    // Only enforce CCC for NHIS patients
+    if (ccc_status === 'generated') {
+      const patientDoc = await Patient.findById(patient_id).lean() as any;
+      if (patientDoc?.nhis_number) {
+        if (!ccc || !/^\d{5}$/.test(String(ccc))) {
+          return res.status(400).json({ error: 'CCC must be exactly 5 digits for an active NHIS card' });
+        }
+      }
+    }
+
     const [vitals] = await Promise.all([
       Vitals.create({
         patient: patient_id,

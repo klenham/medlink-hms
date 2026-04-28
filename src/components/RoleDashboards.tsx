@@ -43,6 +43,8 @@ export function LabDashboard() {
   useEffect(() => {
     fetchPending();
     fetchHistory();
+    const interval = setInterval(fetchPending, 8000);
+    return () => clearInterval(interval);
   }, []);
 
   // Group individual pending requests by patient
@@ -460,14 +462,19 @@ export function PharmacyDashboard() {
 
   const dosageLabel = (m: any) => {
     const parts: string[] = [];
-    if (m.drug_type) parts.push(m.drug_type);
-    if (m.dose_qty && m.frequency) parts.push(`${m.dose_qty} × ${m.frequency}×/day`);
+    if (m.dosage) parts.push(m.dosage);
+    else if (m.drug_type) parts.push(m.drug_type);
+    if (m.frequency) parts.push(`${m.frequency}×/day`);
+    else if (m.dose_qty && m.frequency) parts.push(`${m.dose_qty} × ${m.frequency}×/day`);
     if (m.duration) parts.push(`${m.duration} day${Number(m.duration) !== 1 ? 's' : ''}`);
     return parts.join(' · ') || 'As directed';
   };
 
-  const effectiveQty = (m: any) =>
-    m.qty > 0 ? m.qty : (parseInt(m.dose_qty || '1') * parseInt(m.frequency || '1') * parseInt(m.duration || '1')) || 1;
+  const effectiveQty = (m: any) => {
+    if (m.quantity) return m.quantity;
+    if (m.qty > 0) return m.qty;
+    return (parseInt(m.dose_qty || '1') * parseInt(m.frequency || '1') * parseInt(m.duration || '1')) || 1;
+  };
 
   return (
     <div className="max-w-6xl mx-auto pb-12">
@@ -527,9 +534,10 @@ export function PharmacyDashboard() {
                       <div key={i} className="flex items-start justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-slate-800">
-                            {m.name}{m.measurement ? ` ${m.measurement}` : ''}
+                            {m.drug_name || m.name}{!m.drug_name && m.measurement ? ` ${m.measurement}` : ''}
                           </p>
                           <p className="text-[10px] text-slate-500 font-medium mt-0.5">{dosageLabel(m)}</p>
+                          {m.instructions && <p className="text-[10px] text-slate-400 italic mt-0.5">{m.instructions}</p>}
                         </div>
                         <div className="ml-3 text-right flex-shrink-0">
                           <span className="text-xs font-black text-teal-600">Qty: {effectiveQty(m)}</span>
