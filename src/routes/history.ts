@@ -37,25 +37,6 @@ router.get('/vitals/missing-ccc', authenticateToken, async (req, res) => {
   }
 });
 
-// Get medical history for a patient
-router.get('/:patientId', authenticateToken, async (req, res) => {
-  try {
-    const history = await Consultation.find({ patient: req.params.patientId })
-      .populate('doctor', 'name')
-      .sort({ createdAt: -1 })
-      .lean();
-
-    const formatted = history.map((h: any) => ({
-      ...h,
-      doctor_name: h.doctor?.name || 'Unknown',
-      recorded_at: h.createdAt,
-    }));
-    res.json(formatted);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Record vitals and refer patient to doctor
 router.post('/vitals', authenticateToken, async (req: any, res) => {
   const { patient_id, bp, temperature, weight, pulse, spo2, ccc, ccc_status } = req.body;
@@ -171,6 +152,76 @@ router.post('/consultation/await-results', authenticateToken, async (req: any, r
   }
 });
 
+// Get consultations by the current doctor (for Records tab)
+router.get('/doctor/consultations', authenticateToken, async (req: any, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const records = await Consultation.find({ doctor: req.user.id })
+      .populate<{ patient: any }>('patient', 'name patient_id age gender nhis_number status')
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    const results = records.filter((c: any) => {
+      if (!q) return true;
+      const name = c.patient?.name || '';
+      const pid = c.patient?.patient_id || '';
+      const ill = c.illness || '';
+      return name.toLowerCase().includes(q.toLowerCase()) ||
+             pid.toLowerCase().includes(q.toLowerCase()) ||
+             ill.toLowerCase().includes(q.toLowerCase());
+    }).map((c: any) => ({
+      _id: c._id.toString(),
+      illness: c.illness,
+      treatment: c.treatment,
+      notes: c.notes,
+      status: c.status,
+      createdAt: c.createdAt,
+      patient: c.patient ? {
+        id: c.patient._id.toString(),
+        _id: c.patient._id.toString(),
+        name: c.patient.name,
+        patient_id: c.patient.patient_id,
+        age: c.patient.age,
+        gender: c.patient.gender,
+        nhis_number: c.patient.nhis_number,
+        status: c.patient.status,
+      } : null,
+    }));
+
+    res.json(results);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Amend a consultation (update notes + optionally add new prescription)
+router.post('/consultation/:consultationId/amend', authenticateToken, async (req: any, res) => {
+  const { illness, treatment, notes, medications } = req.body;
+  const doctor_id = req.user.id;
+  try {
+    const consultation = await Consultation.findById(req.params.consultationId).lean() as any;
+    if (!consultation) return res.status(404).json({ error: 'Consultation not found' });
+
+    await Consultation.findByIdAndUpdate(req.params.consultationId, {
+      ...(illness !== undefined && { illness }),
+      ...(treatment !== undefined && { treatment }),
+      ...(notes !== undefined && { notes }),
+    });
+
+    if (Array.isArray(medications) && medications.length > 0) {
+      const valid = medications.filter((m: any) => m.drug_name?.trim());
+      if (valid.length > 0) {
+        await Prescription.create({ patient: consultation.patient, doctor: doctor_id, medications: valid });
+      }
+    }
+
+    res.json({ message: 'Consultation amended' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get partial consultation + lab results for a results_ready patient
 router.get('/consultation/pending/:patientId', authenticateToken, async (req, res) => {
   try {
@@ -262,6 +313,25 @@ router.post('/consultation/complete', authenticateToken, async (req: any, res) =
     ]);
 
     res.json({ message: 'Consultation completed and bill generated' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get medical history for a patient — keep this LAST (catch-all GET /:id)
+router.get('/:patientId', authenticateToken, async (req, res) => {
+  try {
+    const history = await Consultation.find({ patient: req.params.patientId })
+      .populate('doctor', 'name')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const formatted = history.map((h: any) => ({
+      ...h,
+      doctor_name: h.doctor?.name || 'Unknown',
+      recorded_at: h.createdAt,
+    }));
+    res.json(formatted);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

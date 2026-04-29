@@ -11,7 +11,7 @@ async function generatePatientId(): Promise<string> {
   const counter = await PatientCounter.findOneAndUpdate(
     { year },
     { $inc: { seq: 1 } },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   );
   const seq = String(counter.seq).padStart(5, '0');
   const yr = String(year).slice(-2);
@@ -118,7 +118,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const patient = await Patient.findByIdAndUpdate(
       req.params.id,
       { surname, other_names, name: fullName, gender, phone, date_of_birth, age, address, marital_status, religion, occupation, nhis_number, next_of_kin },
-      { new: true }
+      { returnDocument: 'after' }
     ).lean();
 
     if (!patient) return res.status(404).json({ error: 'Patient not found' });

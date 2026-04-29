@@ -54,7 +54,7 @@ router.get('/lab/history', authenticateToken, async (req, res) => {
 router.put('/:id', authenticateToken, async (req, res) => {
   const { result } = req.body;
   try {
-    const lab = await LabRequest.findByIdAndUpdate(req.params.id, { result, status: 'done' }, { new: true });
+    const lab = await LabRequest.findByIdAndUpdate(req.params.id, { result, status: 'done' }, { returnDocument: 'after' });
     if (lab) {
       const patient = await Patient.findById(lab.patient).lean() as any;
 
@@ -64,26 +64,63 @@ router.put('/:id', authenticateToken, async (req, res) => {
         await Patient.findByIdAndUpdate(lab.patient, { status: 'results_ready' });
       }
 
-      /* Create notification and push SSE event to the requesting doctor */
+      /* Create/update grouped notification and push SSE event to the requesting doctor */
       if (lab.doctor) {
         const patientName = patient?.name || 'Unknown patient';
-        const notifData = {
-          title: `Lab Result: ${(lab as any).test_type}`,
-          body: `Result for ${patientName} — ${(lab as any).test_type}: ${result}`,
-          detail: {
-            test_type: (lab as any).test_type,
-            result,
-            patient_name: patientName,
-            patient_id: patient?.patient_id || '',
-            lab_request_id: lab._id.toString(),
-          },
+        const newEntry = {
+          test_type: (lab as any).test_type,
+          result,
+          lab_request_id: lab._id.toString(),
         };
-        const notif = await Notification.create({
+
+        // Find existing unread grouped notification for this doctor+patient
+        const existing = await Notification.findOne({
           doctor: lab.doctor,
           patient: lab.patient,
-          ...notifData,
+          type: 'lab_result',
+          read: false,
+        }).lean() as any;
+
+        let notif: any;
+        if (existing) {
+          // Append new result to the existing notification
+          const prevResults: any[] = Array.isArray(existing.detail?.results)
+            ? existing.detail.results
+            : (existing.detail?.result
+                ? [{ test_type: existing.detail.test_type, result: existing.detail.result, lab_request_id: existing.detail.lab_request_id }]
+                : []);
+
+          const updatedResults = [...prevResults, newEntry];
+          notif = await Notification.findByIdAndUpdate(
+            existing._id,
+            {
+              title: `Result for ${patientName}`,
+              body: `${updatedResults.length} test result${updatedResults.length > 1 ? 's' : ''} ready`,
+              detail: { patient_name: patientName, patient_id: patient?.patient_id || '', results: updatedResults },
+            },
+            { returnDocument: 'after' }
+          ).lean() as any;
+        } else {
+          // Create new grouped notification
+          const created = await Notification.create({
+            doctor: lab.doctor,
+            patient: lab.patient,
+            type: 'lab_result',
+            title: `Result for ${patientName}`,
+            body: '1 test result ready',
+            detail: { patient_name: patientName, patient_id: patient?.patient_id || '', results: [newEntry] },
+          });
+          notif = created.toObject ? created.toObject() : created;
+        }
+
+        sendSSE(lab.doctor.toString(), 'lab_result', {
+          id: notif._id.toString(),
+          title: notif.title,
+          body: notif.body,
+          detail: notif.detail,
+          read: false,
+          createdAt: notif.createdAt,
         });
-        sendSSE(lab.doctor.toString(), 'lab_result', { ...notifData, id: notif._id.toString(), read: false, createdAt: notif.createdAt });
       }
     }
     res.json({ message: 'Result updated' });
@@ -278,7 +315,7 @@ router.post('/billing/pay/:id', authenticateToken, async (req, res) => {
     const bill = await Bill.findByIdAndUpdate(
       req.params.id,
       { status: 'paid', payment_method: method },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!bill) return res.status(404).json({ error: 'Bill not found' });
     await Patient.findByIdAndUpdate(bill.patient, { status: 'discharged' });

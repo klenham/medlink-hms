@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Stethoscope,
   ClipboardList,
@@ -14,6 +14,9 @@ import {
   CalendarCheck,
   ChevronLeft,
   ChevronRight,
+  Search,
+  PencilLine,
+  Save,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -28,7 +31,7 @@ export default function DoctorDashboard({ user }: { user: any }) {
   const [patients, setPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedConsult, setSelectedConsult] = useState<any>(null);
-  const [activeView, setActiveView] = useState<'queue' | 'appointments'>('queue');
+  const [activeView, setActiveView] = useState<'queue' | 'appointments' | 'records'>('queue');
 
   useEffect(() => {
     fetchReferred();
@@ -68,11 +71,20 @@ export default function DoctorDashboard({ user }: { user: any }) {
               activeView === 'appointments' ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/20' : 'glass text-slate-500 hover:text-slate-700')}>
             <CalendarCheck className="w-3.5 h-3.5" /> Appointments
           </button>
+          <button onClick={() => setActiveView('records')}
+            className={cn('px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-1.5',
+              activeView === 'records' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'glass text-slate-500 hover:text-slate-700')}>
+            <PencilLine className="w-3.5 h-3.5" /> Records
+          </button>
         </div>
       </div>
 
       {activeView === 'appointments' && (
         <DoctorAppointments doctorId={user.id} />
+      )}
+
+      {activeView === 'records' && (
+        <DoctorRecords />
       )}
 
       {activeView === 'queue' && (
@@ -189,7 +201,6 @@ export default function DoctorDashboard({ user }: { user: any }) {
         {selectedConsult && (
           <ConsultationModal
             patient={selectedConsult}
-            doctorName={user?.name}
             onClose={() => setSelectedConsult(null)}
             onComplete={() => { setSelectedConsult(null); fetchReferred(); }}
           />
@@ -317,9 +328,264 @@ function DoctorAppointments({ doctorId }: { doctorId: string }) {
   );
 }
 
+/* ─── Doctor Records (Amend Consultations) ─── */
+function DoctorRecords() {
+  const [records, setRecords] = useState<any[]>([]);
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [amendTarget, setAmendTarget] = useState<any | null>(null);
+  const token = () => sessionStorage.getItem('token') ?? '';
+
+  useEffect(() => {
+    fetch('/api/history/doctor/consultations', { headers: { Authorization: `Bearer ${token()}` } })
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setRecords(data); })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = records.filter(r => {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    return (r.patient?.name || '').toLowerCase().includes(q) ||
+           (r.patient?.patient_id || '').toLowerCase().includes(q) ||
+           (r.illness || '').toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input value={query} onChange={e => setQuery(e.target.value)}
+            placeholder="Search by patient name, ID, or diagnosis…"
+            className="w-full bg-white/60 border border-white/40 rounded-xl pl-9 pr-4 py-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/30 placeholder:text-slate-400"
+          />
+        </div>
+        <p className="text-xs text-slate-400 font-bold">{filtered.length} record{filtered.length !== 1 ? 's' : ''}</p>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-16 text-slate-400 text-sm">Loading records…</div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16 glass rounded-3xl">
+          <ClipboardList className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+          <p className="text-slate-400 text-sm">No consultation records found.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map(r => (
+            <div key={r._id} className="glass p-5 rounded-2xl flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 mb-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-600 text-xs font-black flex items-center justify-center shrink-0">
+                    {(r.patient?.name || 'P').charAt(0)}
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800 text-sm">{r.patient?.name || 'Unknown Patient'}</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{r.patient?.patient_id} · {r.patient?.age}Y · {r.patient?.gender}</p>
+                  </div>
+                  <span className={cn('ml-auto text-[9px] font-black px-2 py-0.5 rounded-full shrink-0',
+                    r.status === 'complete' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                  )}>{r.status?.toUpperCase()}</span>
+                </div>
+                <p className="text-xs font-bold text-slate-700 pl-11">{r.illness || 'General Consultation'}</p>
+                {r.treatment && <p className="text-[10px] text-slate-400 pl-11 mt-0.5">Tx: {r.treatment}</p>}
+                <p className="text-[10px] text-slate-300 pl-11 mt-1">{new Date(r.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+              </div>
+              <button onClick={() => setAmendTarget(r)}
+                className="flex items-center gap-1.5 bg-indigo-50 text-indigo-600 font-bold text-[10px] px-3 py-2 rounded-xl hover:bg-indigo-100 transition-all shrink-0 border border-indigo-100">
+                <PencilLine className="w-3.5 h-3.5" /> Amend
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <AnimatePresence>
+        {amendTarget && (
+          <AmendModal
+            record={amendTarget}
+            onClose={() => setAmendTarget(null)}
+            onSaved={() => {
+              setAmendTarget(null);
+              fetch('/api/history/doctor/consultations', { headers: { Authorization: `Bearer ${token()}` } })
+                .then(r => r.json()).then(data => { if (Array.isArray(data)) setRecords(data); });
+            }}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ─── Amend Modal ─── */
+function AmendModal({ record, onClose, onSaved }: { record: any; onClose: () => void; onSaved: () => void }) {
+  const [illness, setIllness] = useState(record.illness || '');
+  const [treatment, setTreatment] = useState(record.treatment || '');
+  const [notes, setNotes] = useState(record.notes || '');
+  const [rxItems, setRxItems] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<any[]>([]);
+  const [openDropdownIdx, setOpenDropdownIdx] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const token = () => sessionStorage.getItem('token') ?? '';
+
+  const inputCls = "w-full bg-white/60 border border-white/40 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/30 placeholder:text-slate-400";
+  const labelCls = "text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block";
+
+  useEffect(() => {
+    fetch('/api/stations/pharmacy/inventory', { headers: { Authorization: `Bearer ${token()}` } })
+      .then(r => r.json()).then(setInventory).catch(() => {});
+  }, []);
+
+  const getSuggestions = (q: string) =>
+    q.length < 1 ? [] : inventory.filter((i: any) => i.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
+
+  const addRx = () => setRxItems(prev => [...prev, { drug_name: '', dosage: '', frequency: '', duration: '', quantity: '', instructions: '', in_stock: null }]);
+  const removeRx = (i: number) => setRxItems(prev => prev.filter((_, idx) => idx !== i));
+  const updateRx = (i: number, patch: Record<string, any>) =>
+    setRxItems(prev => prev.map((item, idx) => idx === i ? { ...item, ...patch } : item));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/history/consultation/${record._id}/amend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({
+          illness, treatment, notes,
+          medications: rxItems.filter(r => r.drug_name.trim()),
+        }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
+      onSaved();
+    } catch (err: any) {
+      console.error('Amend error:', err);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[80] flex items-center justify-center p-6">
+      <motion.div
+        initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+        className="glass-card w-full max-w-2xl p-0 max-h-[90vh] flex flex-col overflow-hidden"
+      >
+        <div className="px-6 py-4 border-b border-white/20 flex items-center justify-between shrink-0">
+          <div>
+            <div className="flex items-center gap-2">
+              <PencilLine className="w-4 h-4 text-indigo-500" />
+              <h3 className="text-base font-bold text-slate-800">Amend Consultation</h3>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">{record.patient?.name} · {record.patient?.patient_id} · {new Date(record.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors"><X className="w-5 h-5 text-slate-500" /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {/* Diagnosis / Treatment / Notes */}
+          <div className="space-y-3">
+            <div>
+              <label className={labelCls}>Diagnosis / Chief Complaint</label>
+              <input value={illness} onChange={e => setIllness(e.target.value)} placeholder="e.g. Typhoid Fever, Malaria" className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Treatment / Management Plan</label>
+              <input value={treatment} onChange={e => setTreatment(e.target.value)} placeholder="e.g. Bed rest, rehydration" className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Notes</label>
+              <textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)}
+                placeholder="Clinical observations, examination findings…"
+                className={`${inputCls} resize-none`}
+              />
+            </div>
+          </div>
+
+          {/* Add more drugs */}
+          <div className="border border-white/30 rounded-2xl p-4 bg-white/20">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Pill className="w-4 h-4 text-indigo-500" />
+                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Add Prescriptions</h4>
+              </div>
+              <button type="button" onClick={addRx}
+                className="text-indigo-600 text-[10px] font-black uppercase tracking-wider hover:text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors">
+                + Add Drug
+              </button>
+            </div>
+
+            {rxItems.length === 0 ? (
+              <p className="text-xs text-slate-400 italic text-center py-4">No new drugs — click &ldquo;+ Add Drug&rdquo; to add more medications.</p>
+            ) : (
+              <div className="space-y-3">
+                {rxItems.map((rx, i) => {
+                  const suggestions = getSuggestions(rx.drug_name);
+                  return (
+                    <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-visible">
+                      <div className="p-3.5 flex gap-2 items-center">
+                        <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-[10px] font-black flex items-center justify-center shrink-0">{i + 1}</div>
+                        <div className="relative flex-1 min-w-0">
+                          <input value={rx.drug_name}
+                            onChange={e => { updateRx(i, { drug_name: e.target.value, in_stock: null }); setOpenDropdownIdx(i); }}
+                            onFocus={() => setOpenDropdownIdx(i)}
+                            onBlur={() => setTimeout(() => setOpenDropdownIdx(null), 150)}
+                            placeholder="Drug name — type to search inventory"
+                            className={`${inputCls} w-full`}
+                          />
+                          {openDropdownIdx === i && suggestions.length > 0 && (
+                            <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
+                              {suggestions.map((item: any) => (
+                                <button key={item.id} type="button"
+                                  onMouseDown={() => { updateRx(i, { drug_name: item.name, in_stock: item.quantity > 0 }); setOpenDropdownIdx(null); }}
+                                  className="w-full px-4 py-2.5 text-left hover:bg-indigo-50 flex justify-between items-center border-b border-gray-50 last:border-0"
+                                >
+                                  <span className="text-xs font-bold text-gray-800">{item.name}</span>
+                                  <span className={cn('text-[9px] font-bold px-2 py-0.5 rounded ml-2 shrink-0', item.quantity > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500')}>
+                                    {item.quantity > 0 ? `${item.quantity} in stock` : 'Out of stock'}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <button onClick={() => removeRx(i)} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 shrink-0 transition-colors">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="px-3.5 pb-3.5 grid grid-cols-2 gap-2 border-t border-gray-50 pt-3 bg-slate-50/40">
+                        <div><label className={labelCls}>Dosage</label><input value={rx.dosage} onChange={e => updateRx(i, { dosage: e.target.value })} placeholder="e.g. 500mg" className={inputCls} /></div>
+                        <div><label className={labelCls}>Frequency</label><input value={rx.frequency} onChange={e => updateRx(i, { frequency: e.target.value })} placeholder="e.g. TDS, BD" className={inputCls} /></div>
+                        <div><label className={labelCls}>Duration</label><input value={rx.duration} onChange={e => updateRx(i, { duration: e.target.value })} placeholder="e.g. 5 days" className={inputCls} /></div>
+                        <div><label className={labelCls}>Quantity</label><input value={rx.quantity} onChange={e => updateRx(i, { quantity: e.target.value })} placeholder="e.g. 15 tablets" className={inputCls} /></div>
+                        <div className="col-span-2"><label className={labelCls}>Instructions</label><input value={rx.instructions} onChange={e => updateRx(i, { instructions: e.target.value })} placeholder="e.g. Take after meals" className={inputCls} /></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-white/20 flex gap-3 shrink-0">
+          <button onClick={onClose} className="flex-1 py-3 font-bold text-slate-500 bg-slate-100 rounded-xl text-xs uppercase tracking-widest hover:bg-slate-200 transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 py-3 font-bold text-white rounded-xl text-xs uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
+            style={{ backgroundColor: 'var(--color-primary-500)' }}
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? 'Saving…' : 'Save Amendments'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 /* ─── Consultation Modal ─── */
-function ConsultationModal({ patient, doctorName, onClose, onComplete }: {
-  patient: any; doctorName?: string; onClose: () => void; onComplete: () => void;
+function ConsultationModal({ patient, onClose, onComplete }: {
+  patient: any; onClose: () => void; onComplete: () => void;
 }) {
   const isResultsReady = patient.queue_status === 'results_ready';
 
@@ -340,13 +606,24 @@ function ConsultationModal({ patient, doctorName, onClose, onComplete }: {
   const [openDropdownIdx, setOpenDropdownIdx] = useState<number | null>(null);
   const [sendingRx, setSendingRx] = useState(false);
   const [rxSent, setRxSent] = useState(false);
-  const [rxSentItems, setRxSentItems] = useState<any[]>([]);
+  const [prescSentDialog, setPrescSentDialog] = useState(false);
+  const [rxNameError, setRxNameError] = useState(false);
 
   /* Results-ready state */
   const [addendumNotes, setAddendumNotes] = useState('');
   const [addendumDiagnosis, setAddendumDiagnosis] = useState('');
   const [addendumPlan, setAddendumPlan] = useState('');
   const [labResults, setLabResults] = useState<any[]>([]);
+
+  /* Additional prescriptions added during addendum (results_ready flow) */
+  const [addRxItems, setAddRxItems] = useState<any[]>([]);
+  const [addRxSent, setAddRxSent] = useState(false);
+  const [addRxNameError, setAddRxNameError] = useState(false);
+  const [addRxDropdownIdx, setAddRxDropdownIdx] = useState<number | null>(null);
+  const addAddRxItem  = () => setAddRxItems(prev => [...prev, { drug_name: '', dosage: '', frequency: '', duration: '', quantity: '', instructions: '', in_stock: null }]);
+  const removeAddRxItem = (i: number) => setAddRxItems(prev => prev.filter((_, idx) => idx !== i));
+  const updateAddRxItem = (i: number, patch: Record<string, any>) =>
+    setAddRxItems(prev => prev.map((item, idx) => idx === i ? { ...item, ...patch } : item));
 
   const [inventory, setInventory] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -440,29 +717,49 @@ function ConsultationModal({ patient, doctorName, onClose, onComplete }: {
   /* Send prescription to pharmacy */
   const handlePrescribe = async () => {
     const valid = rxItems.filter(r => r.drug_name.trim());
-    if (!valid.length) { toast.error('Add at least one drug first'); return; }
+    if (!valid.length) {
+      setRxNameError(true);
+      toast.error('Type a drug name in the highlighted field above');
+      return;
+    }
+    setRxNameError(false);
     setSendingRx(true);
     try {
-      await apiPost('/api/history/consultation/send-rx', {
-        patient_id: patient.id,
-        prescriptions: valid,
+      const res = await fetch('/api/history/consultation/send-rx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
+        body: JSON.stringify({ patient_id: patient.id, prescriptions: valid }),
       });
-      setRxSentItems(valid);
-      setRxItems([]);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
       setRxSent(true);
+      setPrescSentDialog(true);
       toast.success(`Prescription sent to pharmacy — ${valid.length} drug${valid.length !== 1 ? 's' : ''}`);
     } catch (err: any) {
-      console.error('Send Rx error:', err);
-      toast.error('Failed to send prescription', { description: err.message });
+      toast.error('Failed to send prescription — ' + err.message);
     } finally { setSendingRx(false); }
   };
 
   /* Complete consultation (all-in-one) */
   const handleComplete = async () => {
     setSubmitting(true);
+
+    // Auto-send prescription to pharmacy if medications exist and not yet sent (afrihope pattern)
+    const validMeds = rxItems.filter(r => r.drug_name.trim());
+    if (!rxSent && validMeds.length > 0) {
+      try {
+        const pRes = await fetch('/api/history/consultation/send-rx', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
+          body: JSON.stringify({ patient_id: patient.id, prescriptions: validMeds }),
+        });
+        if (pRes.ok) setRxSent(true);
+      } catch { /* continue even if prescription send fails */ }
+    }
+
     const billItems = [{ name: 'Consultation Fee', price: 50, nhis_covered: false }];
     labTests.forEach(t => billItems.push({ name: `Lab: ${t}`, price: 100, nhis_covered: false }));
-    (rxSent ? rxSentItems : rxItems.filter(r => r.drug_name.trim())).forEach(m =>
+    rxItems.filter(r => r.drug_name.trim()).forEach(m =>
       billItems.push({ name: `Drug: ${m.drug_name}`, price: 20, nhis_covered: false })
     );
     try {
@@ -493,6 +790,20 @@ function ConsultationModal({ patient, doctorName, onClose, onComplete }: {
     setSubmitting(true);
     const billItems = [{ name: 'Consultation Fee', price: 50, nhis_covered: false }];
     try {
+      // Auto-send any additional addendum prescriptions to pharmacy first
+      const validAddRx = addRxItems.filter(r => r.drug_name.trim());
+      if (!addRxSent && validAddRx.length > 0) {
+        validAddRx.forEach(m => billItems.push({ name: `Drug: ${m.drug_name}`, price: 20, nhis_covered: false }));
+        try {
+          const pRes = await fetch('/api/history/consultation/send-rx', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
+            body: JSON.stringify({ patient_id: patient.id, prescriptions: validAddRx }),
+          });
+          if (pRes.ok) setAddRxSent(true);
+        } catch { /* continue even if send fails */ }
+      }
+
       if (followup.date) {
         await fetch('/api/admin/appointments', {
           method: 'POST',
@@ -516,7 +827,9 @@ function ConsultationModal({ patient, doctorName, onClose, onComplete }: {
 
   const inputCls = "w-full bg-white/60 border border-white/40 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-primary-500/30 placeholder:text-slate-400";
   const labelCls = "text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block";
-  const validRxCount = rxSent ? rxSentItems.length : rxItems.filter(r => r.drug_name.trim()).length;
+  /* Prescription card inputs — solid visible border so fields are obviously editable */
+  const rxInputCls = "w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400 placeholder:text-slate-300 transition-colors";
+  const validRxCount = rxItems.filter(r => r.drug_name.trim()).length;
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[70] flex items-center justify-center p-6">
@@ -679,6 +992,164 @@ function ConsultationModal({ patient, doctorName, onClose, onComplete }: {
               </div>
             )}
 
+            {/* ── Additional Prescriptions (results_ready / addendum flow) ── */}
+            {isResultsReady && (
+              <div className="border border-teal-200/50 rounded-2xl p-5 bg-teal-50/20">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Pill className="w-4 h-4 text-teal-600" />
+                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Additional Prescriptions</h4>
+                    {addRxItems.filter(r => r.drug_name.trim()).length > 0 && (
+                      <span className="bg-teal-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full">
+                        {addRxItems.filter(r => r.drug_name.trim()).length}
+                      </span>
+                    )}
+                    {addRxSent && (
+                      <span className="flex items-center gap-1 text-[9px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
+                        <CheckCircle2 className="w-2.5 h-2.5" /> Sent to Pharmacy
+                      </span>
+                    )}
+                  </div>
+                  {!addRxSent && (
+                    <button type="button" onClick={addAddRxItem}
+                      className="text-teal-600 text-[10px] font-black uppercase tracking-wider hover:text-teal-700 px-3 py-1.5 rounded-lg hover:bg-teal-100 transition-colors">
+                      + Add Drug
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-[10px] text-slate-400 italic mb-3">
+                  These drugs will be added on top of any earlier prescription and sent to the pharmacy when you finalize.
+                </p>
+
+                {addRxItems.length === 0 ? (
+                  <div className="text-center py-5">
+                    <Pill className="w-7 h-7 text-teal-200 mx-auto mb-2" />
+                    <p className="text-xs text-slate-400 italic">No additional drugs. Click &ldquo;+ Add Drug&rdquo; to prescribe based on lab results.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 mb-4">
+                    {addRxItems.map((rx, i) => {
+                      const suggestions = getSuggestions(rx.drug_name);
+                      return (
+                        <div key={i} className={cn('bg-white rounded-2xl border shadow-sm overflow-visible', addRxSent ? 'border-emerald-100 opacity-80' : 'border-teal-100')}>
+                          {/* Drug name row */}
+                          <div className="p-3.5 flex gap-2 items-center">
+                            <div className="w-6 h-6 rounded-full bg-teal-100 text-teal-600 text-[10px] font-black flex items-center justify-center shrink-0">
+                              {i + 1}
+                            </div>
+                            <div className="relative flex-1 min-w-0">
+                              <input
+                                value={rx.drug_name}
+                                onChange={e => {
+                                  if (!addRxSent) {
+                                    updateAddRxItem(i, { drug_name: e.target.value, in_stock: null });
+                                    setAddRxDropdownIdx(i);
+                                    if (e.target.value.trim()) setAddRxNameError(false);
+                                  }
+                                }}
+                                onFocus={() => !addRxSent && setAddRxDropdownIdx(i)}
+                                onBlur={() => setTimeout(() => setAddRxDropdownIdx(null), 150)}
+                                placeholder="Type drug name to search pharmacy inventory…"
+                                className={cn(
+                                  rxInputCls, 'text-sm py-2.5',
+                                  addRxSent ? 'cursor-default opacity-80' : 'border-teal-400 focus:border-teal-500 focus:ring-teal-400/30',
+                                  addRxNameError && !rx.drug_name.trim() && '!border-red-400 !bg-red-50 placeholder:!text-red-400 focus:!ring-red-400/30'
+                                )}
+                                readOnly={addRxSent}
+                              />
+                              {addRxNameError && !rx.drug_name.trim() && (
+                                <p className="text-[10px] text-red-500 font-bold mt-1 ml-1">← Type the drug name here first</p>
+                              )}
+                              {!addRxSent && addRxDropdownIdx === i && suggestions.length > 0 && (
+                                <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
+                                  {suggestions.map((item: any) => (
+                                    <button key={item.id} type="button"
+                                      onMouseDown={() => { updateAddRxItem(i, { drug_name: item.name, in_stock: item.quantity > 0 }); setAddRxDropdownIdx(null); }}
+                                      className="w-full px-4 py-2.5 text-left hover:bg-teal-50 flex justify-between items-center border-b border-gray-50 last:border-0">
+                                      <span className="text-xs font-bold text-gray-800">{item.name}</span>
+                                      <span className={cn('text-[9px] font-bold px-2 py-0.5 rounded ml-2 shrink-0', item.quantity > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500')}>
+                                        {item.quantity > 0 ? `${item.quantity} in stock` : 'Out of stock'}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            {rx.in_stock === false && <span className="text-[9px] font-bold px-2 py-1 bg-red-50 text-red-500 rounded-lg shrink-0">Out of stock</span>}
+                            {rx.in_stock === true  && <span className="text-[9px] font-bold px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg shrink-0">In stock</span>}
+                            {!addRxSent && (
+                              <button onClick={() => removeAddRxItem(i)} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 shrink-0 transition-colors">
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                          {/* Dosage fields */}
+                          <div className="px-3.5 pb-3.5 grid grid-cols-2 gap-2 border-t border-teal-50 pt-3 bg-teal-50/20">
+                            <div>
+                              <label className={labelCls}>Dosage</label>
+                              <input value={rx.dosage} onChange={e => !addRxSent && updateAddRxItem(i, { dosage: e.target.value })}
+                                placeholder="e.g. 500mg" className={cn(rxInputCls, addRxSent && 'cursor-default opacity-80')} readOnly={addRxSent} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>Frequency</label>
+                              <input value={rx.frequency} onChange={e => !addRxSent && updateAddRxItem(i, { frequency: e.target.value })}
+                                placeholder="e.g. TDS, BD, OD" className={cn(rxInputCls, addRxSent && 'cursor-default opacity-80')} readOnly={addRxSent} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>Duration <span className="text-slate-300 normal-case font-medium">(days)</span></label>
+                              <input value={rx.duration} onChange={e => !addRxSent && updateAddRxItem(i, { duration: e.target.value })}
+                                placeholder="e.g. 5" className={cn(rxInputCls, addRxSent && 'cursor-default opacity-80')} readOnly={addRxSent} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>Quantity <span className="text-slate-300 normal-case font-medium">(tablets/units)</span></label>
+                              <input value={rx.quantity} onChange={e => !addRxSent && updateAddRxItem(i, { quantity: e.target.value })}
+                                placeholder="e.g. 15" className={cn(rxInputCls, addRxSent && 'cursor-default opacity-80')} readOnly={addRxSent} />
+                            </div>
+                            <div className="col-span-2">
+                              <label className={labelCls}>Instructions</label>
+                              <input value={rx.instructions} onChange={e => !addRxSent && updateAddRxItem(i, { instructions: e.target.value })}
+                                placeholder="e.g. Take after meals" className={cn(rxInputCls, addRxSent && 'cursor-default opacity-80')} readOnly={addRxSent} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Send button — available before finalizing */}
+                {addRxItems.length > 0 && !addRxSent && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const valid = addRxItems.filter(r => r.drug_name.trim());
+                      if (!valid.length) { setAddRxNameError(true); toast.error('Type a drug name in the highlighted field'); return; }
+                      setAddRxNameError(false);
+                      try {
+                        const res = await fetch('/api/history/consultation/send-rx', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
+                          body: JSON.stringify({ patient_id: patient.id, prescriptions: valid }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
+                        setAddRxSent(true);
+                        toast.success(`Additional prescription sent — ${valid.length} drug${valid.length !== 1 ? 's' : ''}`);
+                      } catch (err: any) {
+                        toast.error('Failed to send — ' + err.message);
+                      }
+                    }}
+                    className="w-full py-3 flex items-center justify-center gap-2 text-white text-sm font-bold rounded-xl hover:brightness-110 active:scale-[0.99] transition-all"
+                    style={{ backgroundColor: '#14b8a6' }}
+                  >
+                    <Send className="w-4 h-4" /> Send Additional Prescription to Pharmacy
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* ── Lab Requests (new consultation only) ── */}
             {!isResultsReady && (
               <div className="border border-white/30 rounded-2xl p-5 bg-white/20">
@@ -783,6 +1254,7 @@ function ConsultationModal({ patient, doctorName, onClose, onComplete }: {
             {/* ── Prescriptions (new consultation only) ── */}
             {!isResultsReady && (
               <div className="border border-white/30 rounded-2xl p-5 bg-white/20">
+                {/* Header */}
                 <div className="flex justify-between items-center mb-4">
                   <div className="flex items-center gap-2">
                     <Pill className="w-4 h-4 text-primary-500" />
@@ -790,157 +1262,147 @@ function ConsultationModal({ patient, doctorName, onClose, onComplete }: {
                     {validRxCount > 0 && (
                       <span className="bg-primary-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full">{validRxCount}</span>
                     )}
+                    {rxSent && (
+                      <span className="flex items-center gap-1 text-[9px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
+                        <CheckCircle2 className="w-2.5 h-2.5" /> Sent
+                      </span>
+                    )}
                   </div>
-                  {!rxSent && (
-                    <button onClick={addRxItem}
-                      className="text-primary-600 text-[10px] font-black uppercase tracking-wider hover:text-primary-700 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors">
-                      + Add Drug
-                    </button>
-                  )}
+                  <button type="button" onClick={addRxItem}
+                    className="text-primary-600 text-[10px] font-black uppercase tracking-wider hover:text-primary-700 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors">
+                    + Add Drug
+                  </button>
                 </div>
 
-                {rxSent ? (
-                  /* ── Prescription sent ── */
-                  <div>
-                    <div className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 mb-3">
-                      <div className="flex items-center gap-3">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                        <div>
-                          <p className="text-[10px] font-black text-emerald-700 uppercase tracking-wider">Prescription Sent to Pharmacy</p>
-                          <p className="text-xs text-emerald-600 mt-0.5">{rxSentItems.length} drug{rxSentItems.length !== 1 ? 's' : ''} — pharmacy is preparing</p>
-                        </div>
-                      </div>
-                      <button onClick={() => { setRxSent(false); setRxItems(rxSentItems.map(i => ({ ...i }))); }}
-                        className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shrink-0">
-                        Edit
-                      </button>
-                    </div>
-                    <div className="space-y-2">
-                      {rxSentItems.map((m, i) => (
-                        <div key={i} className="flex items-start gap-3 px-4 py-2.5 bg-white/70 rounded-xl border border-emerald-100/50">
-                          <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 text-[9px] font-black flex items-center justify-center shrink-0 mt-0.5">{i + 1}</div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-slate-700">{m.drug_name}</p>
-                            <p className="text-[10px] text-slate-400 mt-0.5">
-                              {[m.dosage, m.frequency, m.duration].filter(Boolean).join(' · ')}
-                              {m.quantity ? ` · Qty: ${m.quantity}` : ''}
-                            </p>
-                            {m.instructions && <p className="text-[10px] text-slate-400 italic mt-0.5">{m.instructions}</p>}
+                {/* Drug cards — always shown */}
+                {rxItems.length === 0 ? (
+                  <div className="text-center py-6">
+                    <Pill className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                    <p className="text-xs text-slate-400 italic">No medications prescribed yet. Click &ldquo;+ Add Drug&rdquo; to begin.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 mb-4">
+                    {rxItems.map((rx, i) => {
+                      const suggestions = getSuggestions(rx.drug_name);
+                      return (
+                        <div key={i} className={cn("bg-white rounded-2xl border shadow-sm overflow-visible", rxSent ? "border-emerald-100 opacity-80" : "border-gray-100")}>
+                          {/* Drug name row */}
+                          <div className="p-3.5 flex gap-2 items-center">
+                            <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-600 text-[10px] font-black flex items-center justify-center shrink-0">
+                              {i + 1}
+                            </div>
+                            <div className="relative flex-1 min-w-0">
+                              <input
+                                value={rx.drug_name}
+                                onChange={e => { if (!rxSent) { updateRxItem(i, { drug_name: e.target.value, in_stock: null, inventory_id: null }); setOpenDropdownIdx(i); if (e.target.value.trim()) setRxNameError(false); } }}
+                                onFocus={() => !rxSent && setOpenDropdownIdx(i)}
+                                onBlur={() => setTimeout(() => setOpenDropdownIdx(null), 150)}
+                                placeholder="Type drug name to search pharmacy inventory…"
+                                className={cn(
+                                  rxInputCls, 'text-sm py-2.5',
+                                  rxSent ? 'cursor-default opacity-80' : 'border-teal-400 focus:border-teal-500 focus:ring-teal-400/30',
+                                  rxNameError && !rx.drug_name.trim() && '!border-red-400 !bg-red-50 placeholder:!text-red-400 focus:!ring-red-400/30'
+                                )}
+                                readOnly={rxSent}
+                              />
+                              {rxNameError && !rx.drug_name.trim() && (
+                                <p className="text-[10px] text-red-500 font-bold mt-1 ml-1">← Type the drug name here first</p>
+                              )}
+                              {!rxSent && openDropdownIdx === i && suggestions.length > 0 && (
+                                <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
+                                  {suggestions.map((item: any) => (
+                                    <button key={item.id} type="button"
+                                      onMouseDown={() => {
+                                        updateRxItem(i, { drug_name: item.name, in_stock: item.quantity > 0, inventory_id: item.id });
+                                        setOpenDropdownIdx(null);
+                                      }}
+                                      className="w-full px-4 py-2.5 text-left hover:bg-primary-50 flex justify-between items-center border-b border-gray-50 last:border-0"
+                                    >
+                                      <span className="text-xs font-bold text-gray-800">{item.name}</span>
+                                      <span className={cn('text-[9px] font-bold px-2 py-0.5 rounded ml-2 shrink-0', item.quantity > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500')}>
+                                        {item.quantity > 0 ? `${item.quantity} in stock` : 'Out of stock'}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            {rx.in_stock === false && <span className="text-[9px] font-bold px-2 py-1 bg-red-50 text-red-500 rounded-lg shrink-0">Out of stock</span>}
+                            {rx.in_stock === true && <span className="text-[9px] font-bold px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg shrink-0">In stock</span>}
+                            {!rxSent && (
+                              <button onClick={() => removeRxItem(i)} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 shrink-0 transition-colors">
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Dosage fields */}
+                          <div className="px-3.5 pb-3.5 grid grid-cols-2 gap-2 border-t border-gray-100 pt-3 bg-slate-50/60">
+                            <div>
+                              <label className={labelCls}>Dosage</label>
+                              <input value={rx.dosage} onChange={e => !rxSent && updateRxItem(i, { dosage: e.target.value })}
+                                placeholder="e.g. 500mg" className={cn(rxInputCls, rxSent && 'cursor-default opacity-80')} readOnly={rxSent} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>Frequency</label>
+                              <input value={rx.frequency} onChange={e => !rxSent && updateRxItem(i, { frequency: e.target.value })}
+                                placeholder="e.g. TDS, BD, OD" className={cn(rxInputCls, rxSent && 'cursor-default opacity-80')} readOnly={rxSent} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>Duration <span className="text-slate-300 normal-case font-medium">(days)</span></label>
+                              <input value={rx.duration} onChange={e => !rxSent && updateRxItem(i, { duration: e.target.value })}
+                                placeholder="e.g. 5" className={cn(rxInputCls, rxSent && 'cursor-default opacity-80')} readOnly={rxSent} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>Quantity <span className="text-slate-300 normal-case font-medium">(tablets/units)</span></label>
+                              <input value={rx.quantity} onChange={e => !rxSent && updateRxItem(i, { quantity: e.target.value })}
+                                placeholder="e.g. 15" className={cn(rxInputCls, rxSent && 'cursor-default opacity-80')} readOnly={rxSent} />
+                            </div>
+                            <div className="col-span-2">
+                              <label className={labelCls}>Instructions</label>
+                              <input value={rx.instructions} onChange={e => !rxSent && updateRxItem(i, { instructions: e.target.value })}
+                                placeholder="e.g. Take after meals, avoid alcohol" className={cn(rxInputCls, rxSent && 'cursor-default opacity-80')} readOnly={rxSent} />
+                            </div>
                           </div>
                         </div>
-                      ))}
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Sent confirmation banner + Edit */}
+                {rxSent && (
+                  <div className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 mb-3">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-black text-emerald-700 uppercase tracking-wider">Prescription Sent to Pharmacy</p>
+                        <p className="text-xs text-emerald-600 mt-0.5">{validRxCount} drug{validRxCount !== 1 ? 's' : ''} — pharmacy is preparing</p>
+                      </div>
                     </div>
+                    <button onClick={() => setRxSent(false)}
+                      className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shrink-0">
+                      Edit
+                    </button>
                   </div>
+                )}
 
-                ) : (
-                  /* ── Idle: drug cards + prescribe button ── */
-                  <div>
-                    {rxItems.length === 0 ? (
-                      <div className="text-center py-6">
-                        <Pill className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                        <p className="text-xs text-slate-400 italic">No medications prescribed yet. Click "+ Add Drug" to begin.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {rxItems.map((rx, i) => {
-                          const suggestions = getSuggestions(rx.drug_name);
-                          return (
-                            <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-visible">
-                              {/* Drug name row */}
-                              <div className="p-3.5 flex gap-2 items-center">
-                                <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-600 text-[10px] font-black flex items-center justify-center shrink-0">
-                                  {i + 1}
-                                </div>
-                                <div className="relative flex-1 min-w-0">
-                                  <input
-                                    value={rx.drug_name}
-                                    onChange={e => { updateRxItem(i, { drug_name: e.target.value, in_stock: null, inventory_id: null }); setOpenDropdownIdx(i); }}
-                                    onFocus={() => setOpenDropdownIdx(i)}
-                                    onBlur={() => setTimeout(() => setOpenDropdownIdx(null), 150)}
-                                    placeholder="Drug name — type to search pharmacy inventory"
-                                    className={`${inputCls} w-full`}
-                                  />
-                                  {openDropdownIdx === i && suggestions.length > 0 && (
-                                    <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
-                                      {suggestions.map((item: any) => (
-                                        <button key={item.id} type="button"
-                                          onMouseDown={() => {
-                                            updateRxItem(i, {
-                                              drug_name: item.name,
-                                              in_stock: item.quantity > 0,
-                                              inventory_id: item.id,
-                                            });
-                                            setOpenDropdownIdx(null);
-                                          }}
-                                          className="w-full px-4 py-2.5 text-left hover:bg-primary-50 flex justify-between items-center border-b border-gray-50 last:border-0"
-                                        >
-                                          <span className="text-xs font-bold text-gray-800">{item.name}</span>
-                                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded ml-2 shrink-0 ${item.quantity > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
-                                            {item.quantity > 0 ? `${item.quantity} in stock` : 'Out of stock'}
-                                          </span>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                                {rx.in_stock === false && (
-                                  <span className="text-[9px] font-bold px-2 py-1 bg-red-50 text-red-500 rounded-lg shrink-0">Out of stock</span>
-                                )}
-                                {rx.in_stock === true && (
-                                  <span className="text-[9px] font-bold px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg shrink-0">In stock</span>
-                                )}
-                                <button onClick={() => removeRxItem(i)}
-                                  className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 shrink-0 transition-colors">
-                                  <X className="w-4 h-4" />
-                                </button>
-                              </div>
-
-                              {/* Dosage fields */}
-                              <div className="px-3.5 pb-3.5 grid grid-cols-2 gap-2 border-t border-gray-50 pt-3 bg-slate-50/40">
-                                <div>
-                                  <label className={labelCls}>Dosage</label>
-                                  <input value={rx.dosage} onChange={e => updateRxItem(i, { dosage: e.target.value })}
-                                    placeholder="e.g. 500mg" className={inputCls} />
-                                </div>
-                                <div>
-                                  <label className={labelCls}>Frequency</label>
-                                  <input value={rx.frequency} onChange={e => updateRxItem(i, { frequency: e.target.value })}
-                                    placeholder="e.g. TDS, BD, OD" className={inputCls} />
-                                </div>
-                                <div>
-                                  <label className={labelCls}>Duration</label>
-                                  <input value={rx.duration} onChange={e => updateRxItem(i, { duration: e.target.value })}
-                                    placeholder="e.g. 5 days, 1 week" className={inputCls} />
-                                </div>
-                                <div>
-                                  <label className={labelCls}>Quantity</label>
-                                  <input value={rx.quantity} onChange={e => updateRxItem(i, { quantity: e.target.value })}
-                                    placeholder="e.g. 15 tablets" className={inputCls} />
-                                </div>
-                                <div className="col-span-2">
-                                  <label className={labelCls}>Instructions</label>
-                                  <input value={rx.instructions} onChange={e => updateRxItem(i, { instructions: e.target.value })}
-                                    placeholder="e.g. Take after meals, avoid alcohol" className={inputCls} />
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Prescribe button */}
-                    {rxItems.filter(r => r.drug_name.trim()).length > 0 && (
-                      <button onClick={handlePrescribe} disabled={sendingRx}
-                        className="w-full mt-4 py-3 text-white text-sm font-bold rounded-2xl disabled:opacity-40 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 active:scale-95"
-                        style={{ backgroundColor: 'var(--color-primary-500)' }}>
-                        {sendingRx
-                          ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending to Pharmacy…</>
-                          : <><Send className="w-4 h-4" /> Prescribe — Send to Pharmacy ({rxItems.filter(r => r.drug_name.trim()).length} drug{rxItems.filter(r => r.drug_name.trim()).length !== 1 ? 's' : ''})</>
-                        }
-                      </button>
-                    )}
-                  </div>
+                {/* Prescribe button — always active when drug cards exist (validates on click, not on render) */}
+                {rxItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handlePrescribe}
+                    disabled={sendingRx}
+                    className="w-full py-3.5 flex items-center justify-center gap-2 text-white text-sm font-bold rounded-xl disabled:opacity-60 transition-all hover:brightness-110 active:scale-[0.99]"
+                    style={{ backgroundColor: rxSent ? '#4b5563' : 'var(--color-primary-500)' }}
+                  >
+                    {sendingRx
+                      ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending to Pharmacy…</>
+                      : rxSent
+                        ? <><Send className="w-4 h-4" /> Re-send Updated Prescription{validRxCount > 0 ? ` (${validRxCount})` : ''}</>
+                        : <><Send className="w-4 h-4" /> Prescribe — Send to Pharmacy{validRxCount > 0 ? ` (${validRxCount} drug${validRxCount !== 1 ? 's' : ''})` : ''}</>
+                    }
+                  </button>
                 )}
               </div>
             )}
@@ -989,6 +1451,60 @@ function ConsultationModal({ patient, doctorName, onClose, onComplete }: {
           </div>
         </div>
       </motion.div>
+
+      {/* ── Prescription Sent Confirmation Dialog ── */}
+      <AnimatePresence>
+        {prescSentDialog && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-6">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">Prescription Sent to Pharmacy</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">The pharmacy has received the following medications</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-2xl p-4 mb-4 space-y-2">
+                {rxItems.filter(r => r.drug_name.trim()).map((m, i) => (
+                  <div key={i} className="flex justify-between items-start py-1.5 border-b border-slate-100 last:border-0">
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">{m.drug_name}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{[m.dosage, m.frequency, m.duration].filter(Boolean).join(' · ')}{m.quantity ? ` · Qty: ${m.quantity}` : ''}</p>
+                      {m.instructions && <p className="text-[10px] text-slate-400 italic">{m.instructions}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-xs text-slate-500 bg-blue-50 rounded-xl px-4 py-3 mb-5">
+                You can now <strong>complete the consultation and generate the bill</strong>. The cashier will collect payment before the pharmacy dispenses the medications.
+              </p>
+
+              <div className="flex gap-3">
+                <button onClick={() => setPrescSentDialog(false)}
+                  className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors">
+                  Stay on Page
+                </button>
+                <button
+                  onClick={() => { setPrescSentDialog(false); handleComplete(); }}
+                  disabled={submitting}
+                  className="flex-1 py-2.5 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all"
+                  style={{ backgroundColor: 'var(--color-primary-500)' }}
+                >
+                  {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
+                  Complete &amp; Generate Bill
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

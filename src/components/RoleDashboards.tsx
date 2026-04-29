@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 // RoleDashboards — Lab, Pharmacy, Accounts, Nurse station views
-import { FlaskConical, Pill, Wallet, CheckCircle2, CreditCard, Banknote, Loader2, History, TrendingUp, CalendarCheck, ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import { FlaskConical, Pill, Wallet, CheckCircle2, CreditCard, Banknote, Loader2, History, TrendingUp, CalendarCheck, ChevronLeft, ChevronRight, Users, RefreshCw } from 'lucide-react';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -43,7 +43,7 @@ export function LabDashboard() {
   useEffect(() => {
     fetchPending();
     fetchHistory();
-    const interval = setInterval(fetchPending, 8000);
+    const interval = setInterval(fetchPending, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -190,6 +190,12 @@ export function LabDashboard() {
               : `History (${history.length})`}
           </button>
         ))}
+        {activeTab === 'queue' && (
+          <button onClick={() => { fetchPending(); fetchHistory(); }}
+            className="ml-auto glass px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-slate-500 hover:text-teal-600 flex items-center gap-1.5 transition-all">
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </button>
+        )}
       </div>
 
       {/* ── QUEUE ── */}

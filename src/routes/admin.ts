@@ -44,7 +44,7 @@ router.put('/users/:id', authenticateToken, authorizeRole(['admin']), async (req
     if (email) update.email = email.toLowerCase();
     if (password) update.password = await bcrypt.hash(password, 10);
     if (Array.isArray(permissions)) update.permissions = permissions;
-    const user = await User.findByIdAndUpdate(req.params.id, update, { new: true }).select('-password').lean();
+    const user = await User.findByIdAndUpdate(req.params.id, update, { returnDocument: 'after' }).select('-password').lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ ...user, id: (user._id as any).toString() });
   } catch (err: any) {
@@ -154,37 +154,72 @@ router.delete('/notices/:id', authenticateToken, authorizeRole(['admin']), async
 
 router.get('/appointments', authenticateToken, async (req: any, res) => {
   try {
-    const filter: any = { status: 'scheduled' };
+    const filter: any = {};
+    if (req.query.status) filter.status = req.query.status;
+    else filter.status = 'scheduled';
     if (req.query.doctor_id) filter.doctor = req.query.doctor_id;
+    if (req.query.from && req.query.to) {
+      filter.date = { $gte: new Date(req.query.from as string), $lte: new Date(req.query.to as string) };
+    }
     const appts = await Appointment.find(filter)
-      .populate('patient', 'name patient_id')
-      .populate('doctor', 'name')
-      .sort({ date: 1 })
+      .populate('patient', 'name patient_id phone age gender')
+      .populate('doctor', 'name specialty')
+      .sort({ date: 1, time: 1 })
       .lean();
-    const formatted = appts.map((a: any) => ({
+    res.json(appts.map((a: any) => ({
       ...a,
       id: a._id.toString(),
-      patient_name: a.patient?.name || '',
-      doctor_name: a.doctor?.name || '',
-    }));
-    res.json(formatted);
+      patient: a.patient ? { ...a.patient, id: a.patient._id.toString() } : null,
+      doctor: a.doctor ? { ...a.doctor, id: a.doctor._id.toString() } : null,
+    })));
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
 router.post('/appointments', authenticateToken, async (req: any, res) => {
-  const { patient_id, date, time, type } = req.body;
+  const { patient_id, doctor_id, date, time, type, notes } = req.body;
   if (!patient_id || !date) return res.status(400).json({ error: 'Patient ID and date are required' });
   try {
     const appt = await Appointment.create({
       patient: patient_id,
-      doctor: req.user.id,
+      doctor: doctor_id || req.user.id,
       date: new Date(date),
       time: time || '10:00',
       type: type || 'review',
+      notes: notes || '',
     });
-    res.status(201).json({ id: (appt._id as any).toString() });
+    const populated = await Appointment.findById(appt._id)
+      .populate('patient', 'name patient_id phone age gender')
+      .populate('doctor', 'name specialty')
+      .lean() as any;
+    res.status(201).json({
+      ...populated,
+      id: populated._id.toString(),
+      patient: populated.patient ? { ...populated.patient, id: populated.patient._id.toString() } : null,
+      doctor: populated.doctor ? { ...populated.doctor, id: populated.doctor._id.toString() } : null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/appointments/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const { status, date, time, type, notes, doctor_id } = req.body;
+    const updates: any = {};
+    if (status) updates.status = status;
+    if (date) updates.date = new Date(date);
+    if (time) updates.time = time;
+    if (type) updates.type = type;
+    if (notes !== undefined) updates.notes = notes;
+    if (doctor_id) updates.doctor = doctor_id;
+    const appt = await Appointment.findByIdAndUpdate(req.params.id, updates, { returnDocument: 'after' })
+      .populate('patient', 'name patient_id phone')
+      .populate('doctor', 'name specialty')
+      .lean() as any;
+    if (!appt) return res.status(404).json({ error: 'Appointment not found' });
+    res.json({ ...appt, id: appt._id.toString() });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -229,7 +264,7 @@ router.put('/admissions/:id/discharge', authenticateToken, async (req, res) => {
     const admission = await Admission.findByIdAndUpdate(
       req.params.id,
       { status: 'discharged', discharge_date: new Date() },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!admission) return res.status(404).json({ error: 'Admission not found' });
     await Patient.findByIdAndUpdate(admission.patient, { status: 'discharged' });

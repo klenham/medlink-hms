@@ -68,7 +68,15 @@ export default function Layout({
     const es = new EventSource(`/api/notifications/stream?token=${token}`);
     es.addEventListener('lab_result', (e: MessageEvent) => {
       const notif = JSON.parse(e.data);
-      setLabNotifs(prev => [notif, ...prev]);
+      setLabNotifs(prev => {
+        const idx = prev.findIndex((n: any) => n.id === notif.id);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = notif;
+          return updated;
+        }
+        return [notif, ...prev];
+      });
       toast.message(notif.title, {
         description: notif.body,
         icon: '🧪',
@@ -378,9 +386,18 @@ export default function Layout({
                                         <div className="flex-1 min-w-0">
                                           <p className="text-xs font-black text-slate-800">{n.title}</p>
                                           <p className="text-xs text-slate-600 mt-0.5 leading-snug">{n.body}</p>
-                                          {n.detail?.result && (
+                                          {Array.isArray(n.detail?.results) ? (
+                                            <div className="mt-1.5 space-y-1">
+                                              {n.detail.results.map((r: any, i: number) => (
+                                                <div key={i} className="bg-white/80 rounded-lg px-3 py-2 border border-blue-100/60">
+                                                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">{r.test_type}</p>
+                                                  <p className="text-xs font-bold text-slate-800">{r.result}</p>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : n.detail?.result && (
                                             <div className="mt-1.5 bg-white/80 rounded-lg px-3 py-2 border border-blue-100/60">
-                                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Result</p>
+                                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">{n.detail.test_type || 'Result'}</p>
                                               <p className="text-xs font-bold text-slate-800">{n.detail.result}</p>
                                             </div>
                                           )}
