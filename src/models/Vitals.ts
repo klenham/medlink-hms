@@ -14,5 +14,5 @@ const VitalsSchema = new mongoose.Schema({
   recorded_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
-const Vitals = mongoose.models.Vitals || mongoose.model('Vitals', VitalsSchema);
+const Vitals = (mongoose.models.Vitals || mongoose.model('Vitals', VitalsSchema)) as mongoose.Model<any>;
 export default Vitals;

@@ -9,5 +9,5 @@ const LabRequestSchema = new mongoose.Schema({
   result:    { type: String, default: '' },
 }, { timestamps: true });
 
-const LabRequest = mongoose.models.LabRequest || mongoose.model('LabRequest', LabRequestSchema);
+const LabRequest = (mongoose.models.LabRequest || mongoose.model('LabRequest', LabRequestSchema)) as mongoose.Model<any>;
 export default LabRequest;

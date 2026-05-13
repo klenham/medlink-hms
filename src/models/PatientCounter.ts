@@ -5,5 +5,5 @@ const PatientCounterSchema = new mongoose.Schema({
   seq:  { type: Number, default: 0 },
 });
 
-const PatientCounter = mongoose.models.PatientCounter || mongoose.model('PatientCounter', PatientCounterSchema);
+const PatientCounter = (mongoose.models.PatientCounter || mongoose.model('PatientCounter', PatientCounterSchema)) as mongoose.Model<any>;
 export default PatientCounter;

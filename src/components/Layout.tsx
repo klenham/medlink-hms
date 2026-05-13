@@ -3,7 +3,7 @@ import {
   LayoutDashboard, CalendarCheck, Users, Stethoscope, Building2,
   CalendarDays, Package, MessageSquare, LogOut, Bell, Search,
   BarChart3, UserCog, ChevronDown, X, Settings as SettingsIcon, Clock,
-  Moon, Sun, FlaskConical, CheckCheck,
+  Moon, Sun, FlaskConical, CheckCheck, Receipt,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
@@ -122,6 +122,7 @@ export default function Layout({
     { icon: Stethoscope,     label: 'Doctors',      path: '/doctors',      roles: ['admin'] },
     { icon: Building2,       label: 'Departments',  path: '/departments',  roles: ['admin'] },
     { icon: CalendarDays,    label: 'Calendar',     path: '/calendar',     roles: ['admin', 'doctor'] },
+    { icon: Receipt,         label: 'Claims',       path: '/claims',     roles: ['admin', 'doctor', 'pharmacist'] },
     { icon: Package,         label: 'Inventory',    path: '/inventory',    roles: ['admin', 'pharmacist'] },
     { icon: MessageSquare,   label: 'Messages',     path: '/messages',     roles: ['all'] },
     { icon: BarChart3,       label: 'Analysis',     path: '/analysis',     roles: ['admin'] },

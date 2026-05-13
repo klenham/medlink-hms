@@ -8,6 +8,7 @@ import Prescription from '../models/Prescription.js';
 import Bill from '../models/Bill.js';
 import PatientReview from '../models/PatientReview.js';
 import Appointment from '../models/Appointment.js';
+import { createDraftClaimFromConsultation } from '../lib/claims.js';
 
 const router = express.Router();
 
@@ -267,6 +268,15 @@ router.post('/consultation/finalize', authenticateToken, async (req: any, res) =
       Vitals.updateMany({ patient: patient_id, status: 'pending' }, { status: 'seen' }),
     ]);
 
+    try {
+      const completedConsultation = await Consultation.findOne({ patient: patient_id, status: 'complete' }).sort({ updatedAt: -1 }).lean();
+      if (completedConsultation) {
+        await createDraftClaimFromConsultation(completedConsultation._id.toString(), doctor_id);
+      }
+    } catch {
+      // best-effort claim draft creation
+    }
+
     res.json({ message: 'Consultation finalized and bill generated' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -311,6 +321,15 @@ router.post('/consultation/complete', authenticateToken, async (req: any, res) =
       Patient.findByIdAndUpdate(patient_id, { status: 'billing' }),
       Vitals.updateMany({ patient: patient_id, status: 'pending' }, { status: 'seen' }),
     ]);
+
+    try {
+      const completedConsultation = await Consultation.findOne({ patient: patient_id, status: 'complete' }).sort({ updatedAt: -1 }).lean();
+      if (completedConsultation) {
+        await createDraftClaimFromConsultation(completedConsultation._id.toString(), doctor_id);
+      }
+    } catch {
+      // best-effort claim draft creation
+    }
 
     res.json({ message: 'Consultation completed and bill generated' });
   } catch (err: any) {

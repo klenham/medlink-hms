@@ -587,924 +587,297 @@ function AmendModal({ record, onClose, onSaved }: { record: any; onClose: () => 
 function ConsultationModal({ patient, onClose, onComplete }: {
   patient: any; onClose: () => void; onComplete: () => void;
 }) {
-  const isResultsReady = patient.queue_status === 'results_ready';
-
-  /* Core form */
   const [illness, setIllness] = useState('');
   const [treatment, setTreatment] = useState('');
   const [notes, setNotes] = useState('');
-  const [followup, setFollowup] = useState({ date: '', time: '', type: 'review' });
-
-  /* Lab state */
   const [labInput, setLabInput] = useState('');
-  const [labTests, setLabTests] = useState<string[]>([]);
-  const [sendingLabs, setSendingLabs] = useState(false);
-  const [labFlow, setLabFlow] = useState<'idle' | 'sent' | 'skipped'>('idle');
-
-  /* Rx state */
+  const [labRequests, setLabRequests] = useState<any[]>([]);
   const [rxItems, setRxItems] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<any[]>([]);
   const [openDropdownIdx, setOpenDropdownIdx] = useState<number | null>(null);
-  const [sendingRx, setSendingRx] = useState(false);
-  const [rxSent, setRxSent] = useState(false);
-  const [prescSentDialog, setPrescSentDialog] = useState(false);
-  const [rxNameError, setRxNameError] = useState(false);
-
-  /* Results-ready state */
-  const [addendumNotes, setAddendumNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingData, setPendingData] = useState<any>(null);
+  const [labResults, setLabResults] = useState<any[]>([]);
+  const [fetchingPending, setFetchingPending] = useState(false);
   const [addendumDiagnosis, setAddendumDiagnosis] = useState('');
   const [addendumPlan, setAddendumPlan] = useState('');
-  const [labResults, setLabResults] = useState<any[]>([]);
+  const [addendumNotes, setAddendumNotes] = useState('');
 
-  /* Additional prescriptions added during addendum (results_ready flow) */
-  const [addRxItems, setAddRxItems] = useState<any[]>([]);
-  const [addRxSent, setAddRxSent] = useState(false);
-  const [addRxNameError, setAddRxNameError] = useState(false);
-  const [addRxDropdownIdx, setAddRxDropdownIdx] = useState<number | null>(null);
-  const addAddRxItem  = () => setAddRxItems(prev => [...prev, { drug_name: '', dosage: '', frequency: '', duration: '', quantity: '', instructions: '', in_stock: null }]);
-  const removeAddRxItem = (i: number) => setAddRxItems(prev => prev.filter((_, idx) => idx !== i));
-  const updateAddRxItem = (i: number, patch: Record<string, any>) =>
-    setAddRxItems(prev => prev.map((item, idx) => idx === i ? { ...item, ...patch } : item));
-
-  const [inventory, setInventory] = useState<any[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const token = () => sessionStorage.getItem('token') ?? '';
+  const isResultsReady = patient?.queue_status === 'results_ready';
 
   useEffect(() => {
-    fetch('/api/stations/pharmacy/inventory', {
-      headers: { Authorization: `Bearer ${sessionStorage.getItem('token')}` },
-    }).then(r => r.json()).then(setInventory).catch(() => {});
-
-    if (isResultsReady) {
-      fetch(`/api/history/consultation/pending/${patient.id}`, {
-        headers: { Authorization: `Bearer ${sessionStorage.getItem('token')}` },
-      }).then(r => r.json()).then(data => {
-        if (data.consultation) {
-          setIllness(data.consultation.illness || '');
-          setTreatment(data.consultation.treatment || '');
-          setNotes(data.consultation.notes || '');
-        }
-        setLabResults(data.lab_results || []);
-      }).catch(() => {});
-    }
+    fetch('/api/stations/pharmacy/inventory', { headers: { Authorization: `Bearer ${token()}` } })
+      .then(r => r.json()).then(setInventory).catch(() => {});
   }, []);
 
-  const getSuggestions = (query: string) =>
-    query.length < 1 ? [] : inventory.filter(i => i.name.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
+  useEffect(() => {
+    if (!isResultsReady) return;
+    setFetchingPending(true);
+    fetch(`/api/history/consultation/pending/${patient.id}`, {
+      headers: { Authorization: `Bearer ${token()}` },
+    })
+      .then(r => r.json())
+      .then(data => {
+        setPendingData(data.consultation || null);
+        setLabResults(data.lab_results || []);
+        setIllness(data.consultation?.illness || '');
+        setTreatment(data.consultation?.treatment || '');
+        setNotes(data.consultation?.notes || '');
+        setAddendumDiagnosis(data.consultation?.addendum_diagnosis || '');
+        setAddendumPlan(data.consultation?.addendum_plan || '');
+        setAddendumNotes(data.consultation?.addendum_notes || '');
+      })
+      .catch(err => {
+        console.error('Failed to fetch pending consultation', err);
+      })
+      .finally(() => setFetchingPending(false));
+  }, [isResultsReady, patient.id]);
 
-  /* Lab handlers */
-  const addLabTest = () => {
-    const t = labInput.trim();
-    if (!t) return;
-    setLabTests(prev => [...prev, t]);
-    setLabInput('');
-  };
-  const removeLabTest = (i: number) => setLabTests(prev => prev.filter((_, idx) => idx !== i));
+  const getSuggestions = (q: string) =>
+    q.length < 1 ? [] : inventory.filter((i: any) => i.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
 
-  /* Rx handlers */
-  const addRxItem = () => setRxItems(prev => [...prev, {
-    drug_name: '', dosage: '', frequency: '', duration: '', quantity: '', instructions: '', in_stock: null, inventory_id: null,
-  }]);
-  const removeRxItem = (i: number) => setRxItems(prev => prev.filter((_, idx) => idx !== i));
-  const updateRxItem = (i: number, patch: Record<string, any>) =>
+  const addRx = () => setRxItems(prev => [...prev, { drug_name: '', dosage: '', frequency: '', duration: '', quantity: '', instructions: '', in_stock: null }]);
+  const removeRx = (i: number) => setRxItems(prev => prev.filter((_, idx) => idx !== i));
+  const updateRx = (i: number, patch: Record<string, any>) =>
     setRxItems(prev => prev.map((item, idx) => idx === i ? { ...item, ...patch } : item));
 
-  const apiPost = async (url: string, body: object) => {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    return data;
-  };
-
-  /* Send labs to lab station */
-  const handleRequestLabs = async () => {
-    if (!labTests.length) { toast.error('Add at least one test first'); return; }
-    setSendingLabs(true);
-    try {
-      await apiPost('/api/history/consultation/send-labs', {
-        patient_id: patient.id,
-        lab_requests: labTests.map(t => ({ type: t, notes: '' })),
-      });
-      setLabFlow('sent');
-      toast.success(`Lab request sent — ${labTests.length} test${labTests.length !== 1 ? 's' : ''} queued`);
-    } catch (err: any) {
-      console.error('Send labs error:', err);
-      toast.error('Failed to send lab request', { description: err.message });
-    } finally { setSendingLabs(false); }
-  };
-
-  /* Wait for lab results — puts patient in awaiting_results */
-  const handleWaitForResults = async () => {
-    setSubmitting(true);
-    try {
-      await apiPost('/api/history/consultation/await-results', {
-        patient_id: patient.id,
-        illness, treatment, notes,
-        lab_requests: [],
-        lab_already_sent: true,
-        prescriptions: rxSent ? [] : rxItems.filter(r => r.drug_name.trim()),
-        rx_already_sent: rxSent,
-      });
-      toast.success('Patient is awaiting lab results', { description: "You'll be notified when results are ready." });
-      onComplete();
-    } catch (err: any) {
-      toast.error('Failed', { description: err.message });
-    } finally { setSubmitting(false); }
-  };
-
-  /* Send prescription to pharmacy */
-  const handlePrescribe = async () => {
-    const valid = rxItems.filter(r => r.drug_name.trim());
-    if (!valid.length) {
-      setRxNameError(true);
-      toast.error('Type a drug name in the highlighted field above');
-      return;
-    }
-    setRxNameError(false);
-    setSendingRx(true);
-    try {
-      const res = await fetch('/api/history/consultation/send-rx', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
-        body: JSON.stringify({ patient_id: patient.id, prescriptions: valid }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
-      setRxSent(true);
-      setPrescSentDialog(true);
-      toast.success(`Prescription sent to pharmacy — ${valid.length} drug${valid.length !== 1 ? 's' : ''}`);
-    } catch (err: any) {
-      toast.error('Failed to send prescription — ' + err.message);
-    } finally { setSendingRx(false); }
-  };
-
-  /* Complete consultation (all-in-one) */
   const handleComplete = async () => {
     setSubmitting(true);
+    try {
+      const endpoint = isResultsReady ? '/api/history/consultation/finalize' : '/api/history/consultation/complete';
+      const payload: any = { patient_id: patient.id };
 
-    // Auto-send prescription to pharmacy if medications exist and not yet sent (afrihope pattern)
-    const validMeds = rxItems.filter(r => r.drug_name.trim());
-    if (!rxSent && validMeds.length > 0) {
-      try {
-        const pRes = await fetch('/api/history/consultation/send-rx', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
-          body: JSON.stringify({ patient_id: patient.id, prescriptions: validMeds }),
-        });
-        if (pRes.ok) setRxSent(true);
-      } catch { /* continue even if prescription send fails */ }
+      if (isResultsReady) {
+        payload.addendum_diagnosis = addendumDiagnosis;
+        payload.addendum_plan = addendumPlan;
+        payload.addendum_notes = addendumNotes;
+      } else {
+        payload.illness = illness;
+        payload.treatment = treatment;
+        payload.notes = notes;
+        payload.lab_requests = labRequests.map(l => ({ type: l.type, notes: l.notes || '' }));
+        payload.prescriptions = rxItems.map(r => ({ drug_name: r.drug_name, dosage: r.dosage, frequency: r.frequency, duration: r.duration, quantity: r.quantity, instructions: r.instructions }));
+      }
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Unable to complete consultation');
+      toast.success('Consultation saved successfully');
+      onComplete();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save consultation');
+    } finally {
+      setSubmitting(false);
     }
-
-    const billItems = [{ name: 'Consultation Fee', price: 50, nhis_covered: false }];
-    labTests.forEach(t => billItems.push({ name: `Lab: ${t}`, price: 100, nhis_covered: false }));
-    rxItems.filter(r => r.drug_name.trim()).forEach(m =>
-      billItems.push({ name: `Drug: ${m.drug_name}`, price: 20, nhis_covered: false })
-    );
-    try {
-      if (followup.date) {
-        await fetch('/api/admin/appointments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
-          body: JSON.stringify({ patient_id: patient.id, date: followup.date, time: followup.time || '10:00', type: followup.type }),
-        });
-      }
-      await apiPost('/api/history/consultation/complete', {
-        patient_id: patient.id,
-        illness, treatment, notes,
-        lab_requests: labFlow === 'sent' || labFlow === 'skipped' ? [] : labTests.map(t => ({ type: t, notes: '' })),
-        prescriptions: rxSent ? [] : rxItems.filter(r => r.drug_name.trim()),
-        bill_items: billItems,
-      });
-      toast.success('Consultation completed', { description: 'Bill generated.' });
-      onComplete();
-    } catch (err: any) {
-      toast.error('Failed to complete consultation', { description: err.message });
-    } finally { setSubmitting(false); }
   };
-
-  /* Finalize after lab results reviewed */
-  const handleFinalize = async () => {
-    if (!addendumDiagnosis.trim()) { toast.error('Enter a final diagnosis'); return; }
-    setSubmitting(true);
-    const billItems = [{ name: 'Consultation Fee', price: 50, nhis_covered: false }];
-    try {
-      // Auto-send any additional addendum prescriptions to pharmacy first
-      const validAddRx = addRxItems.filter(r => r.drug_name.trim());
-      if (!addRxSent && validAddRx.length > 0) {
-        validAddRx.forEach(m => billItems.push({ name: `Drug: ${m.drug_name}`, price: 20, nhis_covered: false }));
-        try {
-          const pRes = await fetch('/api/history/consultation/send-rx', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
-            body: JSON.stringify({ patient_id: patient.id, prescriptions: validAddRx }),
-          });
-          if (pRes.ok) setAddRxSent(true);
-        } catch { /* continue even if send fails */ }
-      }
-
-      if (followup.date) {
-        await fetch('/api/admin/appointments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
-          body: JSON.stringify({ patient_id: patient.id, date: followup.date, time: followup.time || '10:00', type: followup.type }),
-        });
-      }
-      await apiPost('/api/history/consultation/finalize', {
-        patient_id: patient.id,
-        addendum_notes: addendumNotes,
-        addendum_diagnosis: addendumDiagnosis,
-        addendum_plan: addendumPlan,
-        bill_items: billItems,
-      });
-      toast.success('Consultation finalized', { description: 'Patient sent to billing.' });
-      onComplete();
-    } catch (err: any) {
-      toast.error('Failed to finalize', { description: err.message });
-    } finally { setSubmitting(false); }
-  };
-
-  const inputCls = "w-full bg-white/60 border border-white/40 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-primary-500/30 placeholder:text-slate-400";
-  const labelCls = "text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block";
-  /* Prescription card inputs — solid visible border so fields are obviously editable */
-  const rxInputCls = "w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400 placeholder:text-slate-300 transition-colors";
-  const validRxCount = rxItems.filter(r => r.drug_name.trim()).length;
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[70] flex items-center justify-center p-6">
-      <motion.div
-        initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-        className="glass-card w-full max-w-5xl p-0 h-[90vh] flex overflow-hidden"
-      >
-        {/* ── Left: Patient Summary ── */}
-        <div className="w-72 flex-shrink-0 glass-dark border-r border-white/20 flex flex-col overflow-y-auto">
-          <div className="p-6">
-            {isResultsReady && (
-              <div className="mb-4 flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-2.5 rounded-xl">
-                <FlaskConical className="w-4 h-4 flex-shrink-0" />
-                <p className="text-[10px] font-black uppercase tracking-widest">Lab Results In</p>
-              </div>
-            )}
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-lg font-bold flex-shrink-0" style={{ backgroundColor: 'var(--color-primary-500)' }}>
-                {patient.name.charAt(0)}
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-slate-800 leading-tight">{patient.name}</h2>
-                <p className="text-[10px] font-black text-primary-600 uppercase tracking-widest">{patient.gender}, {patient.age}Y</p>
-              </div>
-            </div>
-
-            <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Today's Vitals</h4>
-            <div className="space-y-1 mb-6">
-              {[
-                { label: 'BP',     value: patient.bp },
-                { label: 'Temp',   value: `${patient.temperature}°C` },
-                { label: 'Weight', value: `${patient.weight}kg` },
-                { label: 'Pulse',  value: `${patient.pulse}bpm` },
-                { label: 'SpO2',   value: `${patient.spo2}%` },
-              ].map(v => (
-                <div key={v.label} className="flex justify-between items-center py-1.5 border-b border-white/10">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">{v.label}</span>
-                  <span className="text-xs font-bold text-slate-800">{v.value || '—'}</span>
-                </div>
-              ))}
-            </div>
-
-            {patient.nhis_number && (
-              <div>
-                <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Insurance</h4>
-                <div className="p-4 rounded-2xl bg-primary-50 border border-primary-100/50">
-                  <p className="text-[9px] font-black text-primary-600 uppercase tracking-wider mb-1">GH-NHIS Card</p>
-                  <p className="text-sm font-bold text-slate-800 mb-3 break-all">{patient.nhis_number}</p>
-                  <span className={cn(
-                    "text-[10px] font-black px-3 py-1.5 rounded-lg inline-block",
-                    patient.ccc_status === 'generated' ? "bg-teal-500 text-white" :
-                    patient.ccc_status === 'unable'    ? "bg-orange-500 text-white" :
-                    "bg-red-500 text-white"
-                  )}>
-                    {patient.ccc_status === 'generated' ? `CCC: ${patient.ccc}` :
-                     patient.ccc_status === 'unable'    ? 'CCC PENDING' : 'INACTIVE'}
-                  </span>
-                </div>
-              </div>
-            )}
+    <div className="fixed inset-0 bg-slate-900/60 z-[70] flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[calc(100vh-3rem)] overflow-hidden flex flex-col">
+        <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between gap-4 shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">Consultation — {patient?.name || 'Patient'}</h2>
+            <p className="text-sm text-slate-500">Patient ID: {patient?.patient_id || 'N/A'} · Status: {patient?.queue_status || 'unknown'}</p>
           </div>
+          <button onClick={onClose} className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 transition-colors"><X className="w-5 h-5" /></button>
         </div>
 
-        {/* ── Right: Forms ── */}
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="px-8 py-5 border-b border-white/20 flex justify-between items-center flex-shrink-0">
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">Clinical Consultation</h2>
-              {isResultsReady && <p className="text-xs text-blue-600 font-bold mt-0.5">Reviewing lab results — complete with addendum below</p>}
+        <div className="grid lg:grid-cols-[1.2fr_0.8fr] gap-6 p-6 overflow-y-auto min-h-0">
+          <div className="space-y-6 min-h-0">
+            {!isResultsReady ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Primary Diagnosis / Chief Complaint</label>
+                  <input value={illness} onChange={e => setIllness(e.target.value)} placeholder="e.g. Malaria, Typhoid"
+                    className="w-full mt-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-200" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Treatment / Plan</label>
+                  <input value={treatment} onChange={e => setTreatment(e.target.value)} placeholder="e.g. Rehydration, antibiotics"
+                    className="w-full mt-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-200" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Notes</label>
+                  <textarea rows={4} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Clinical notes and exam findings"
+                    className="w-full mt-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none resize-none focus:border-teal-400 focus:ring-2 focus:ring-teal-200" />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Existing consultation</p>
+                  <p className="mt-2 text-sm text-slate-700">{pendingData?.illness || 'No previous summary available yet.'}</p>
+                  <p className="mt-2 text-sm text-slate-700">{pendingData?.notes || 'No recorded notes yet.'}</p>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Addendum Diagnosis</label>
+                  <input value={addendumDiagnosis} onChange={e => setAddendumDiagnosis(e.target.value)} placeholder="Final diagnosis"
+                    className="w-full mt-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Addendum Plan</label>
+                  <textarea rows={3} value={addendumPlan} onChange={e => setAddendumPlan(e.target.value)} placeholder="Final management plan"
+                    className="w-full mt-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none resize-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Addendum Notes</label>
+                  <textarea rows={3} value={addendumNotes} onChange={e => setAddendumNotes(e.target.value)} placeholder="Additional observations after lab review"
+                    className="w-full mt-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none resize-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200" />
+                </div>
+              </div>
+            )}
+
+            {!isResultsReady && (
+              <div className="grid gap-6">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Lab requests</p>
+                      <p className="text-xs text-slate-500">Request tests before completing consultation.</p>
+                    </div>
+                    <button onClick={addLabRequest} className="text-sm font-bold text-teal-600">Add</button>
+                  </div>
+                  <div className="flex gap-2">
+                    <input value={labInput} onChange={e => setLabInput(e.target.value)} placeholder="e.g. FBC, Malaria RDT"
+                      className="flex-1 bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none" />
+                  </div>
+                  {labRequests.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      {labRequests.map(item => (
+                        <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">{item.type}</p>
+                          </div>
+                          <button onClick={() => handleRemoveLab(item.id)} className="text-xs font-black uppercase tracking-widest text-rose-500">Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="border border-white/30 rounded-2xl p-4 bg-white/20">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Pill className="w-4 h-4 text-indigo-500" />
+                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Add Prescriptions</h4>
+              </div>
+              <button type="button" onClick={addRx}
+                className="text-indigo-600 text-[10px] font-black uppercase tracking-wider hover:text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors">
+                + Add Drug
+              </button>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors"><X className="w-5 h-5"/></button>
+
+            {rxItems.length === 0 ? (
+              <p className="text-xs text-slate-400 italic text-center py-4">No new drugs — click &ldquo;+ Add Drug&rdquo; to add more medications.</p>
+            ) : (
+              <div className="space-y-3">
+                {rxItems.map((rx, i) => {
+                  const suggestions = getSuggestions(rx.drug_name);
+                  return (
+                    <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-visible">
+                      <div className="p-3.5 flex gap-2 items-center">
+                        <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-[10px] font-black flex items-center justify-center shrink-0">{i + 1}</div>
+                        <div className="relative flex-1 min-w-0">
+                          <input value={rx.drug_name}
+                            onChange={e => { updateRx(i, { drug_name: e.target.value, in_stock: null }); setOpenDropdownIdx(i); }}
+                            onFocus={() => setOpenDropdownIdx(i)}
+                            onBlur={() => setTimeout(() => setOpenDropdownIdx(null), 150)}
+                            placeholder="Drug name — type to search inventory"
+                            className={`${inputCls} w-full`}
+                          />
+                          {openDropdownIdx === i && suggestions.length > 0 && (
+                            <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
+                              {suggestions.map((item: any) => (
+                                <button key={item.id} type="button"
+                                  onMouseDown={() => { updateRx(i, { drug_name: item.name, in_stock: item.quantity > 0 }); setOpenDropdownIdx(null); }}
+                                  className="w-full px-4 py-2.5 text-left hover:bg-indigo-50 flex justify-between items-center border-b border-gray-50 last:border-0"
+                                >
+                                  <span className="text-xs font-bold text-gray-800">{item.name}</span>
+                                  <span className={cn('text-[9px] font-bold px-2 py-0.5 rounded ml-2 shrink-0', item.quantity > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500')}>
+                                    {item.quantity > 0 ? `${item.quantity} in stock` : 'Out of stock'}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <button onClick={() => removeRx(i)} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 shrink-0 transition-colors">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="px-3.5 pb-3.5 grid grid-cols-2 gap-2 border-t border-gray-50 pt-3 bg-slate-50/40">
+                        <div><label className={labelCls}>Dosage</label><input value={rx.dosage} onChange={e => updateRx(i, { dosage: e.target.value })} placeholder="e.g. 500mg" className={inputCls} /></div>
+                        <div><label className={labelCls}>Frequency</label><input value={rx.frequency} onChange={e => updateRx(i, { frequency: e.target.value })} placeholder="e.g. TDS, BD" className={inputCls} /></div>
+                        <div><label className={labelCls}>Duration</label><input value={rx.duration} onChange={e => updateRx(i, { duration: e.target.value })} placeholder="e.g. 5 days" className={inputCls} /></div>
+                        <div><label className={labelCls}>Quantity</label><input value={rx.quantity} onChange={e => updateRx(i, { quantity: e.target.value })} placeholder="e.g. 15 tablets" className={inputCls} /></div>
+                        <div className="col-span-2"><label className={labelCls}>Instructions</label><input value={rx.instructions} onChange={e => updateRx(i, { instructions: e.target.value })} placeholder="e.g. Take after meals" className={inputCls} /></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+              </div>
+            )}
           </div>
 
-          <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
-
-            {/* ── Diagnosis + Treatment + Notes ── */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls}>{isResultsReady ? 'Preliminary Diagnosis' : 'Primary Diagnosis / Chief Complaint'}</label>
-                <input value={illness} onChange={e => setIllness(e.target.value)}
-                  placeholder="e.g. Typhoid Fever, Malaria"
-                  className={cn(inputCls, isResultsReady && 'opacity-70')}
-                  readOnly={isResultsReady}
-                />
-              </div>
-              <div>
-                <label className={labelCls}>General Treatment / Plan</label>
-                <input value={treatment} onChange={e => setTreatment(e.target.value)}
-                  placeholder="e.g. Bed rest, rehydration"
-                  className={cn(inputCls, isResultsReady && 'opacity-70')}
-                  readOnly={isResultsReady}
-                />
+          <div className="space-y-6">
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-4">Patient summary</h3>
+              <div className="space-y-3 text-sm text-slate-700">
+                <p><strong>Name:</strong> {patient?.name}</p>
+                <p><strong>ID:</strong> {patient?.patient_id}</p>
+                <p><strong>Age:</strong> {patient?.age || '—'}</p>
+                <p><strong>Gender:</strong> {patient?.gender || '—'}</p>
+                <p><strong>Status:</strong> {patient?.queue_status}</p>
               </div>
             </div>
-            <div>
-              <label className={labelCls}>History &amp; Examination Notes</label>
-              <textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)}
-                placeholder="Clinical observations, symptoms, examination findings, history..."
-                className={cn(`${inputCls} resize-none`, isResultsReady && 'opacity-70')}
-                readOnly={isResultsReady}
-              />
-            </div>
 
-            {/* ── Lab Results (results_ready mode) ── */}
             {isResultsReady && (
-              <div className="border border-blue-200/50 rounded-2xl p-5 bg-blue-50/30">
-                <div className="flex items-center gap-2 mb-4">
-                  <FlaskConical className="w-4 h-4 text-blue-500" />
-                  <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Lab Results</h4>
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-sm font-black uppercase tracking-widest text-slate-400">Lab results</p>
+                    <p className="text-xs text-slate-500">Review completed tests before finalizing.</p>
+                  </div>
+                  {fetchingPending && <span className="text-[10px] uppercase tracking-widest text-slate-400">Loading…</span>}
                 </div>
                 {labResults.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic text-center py-3">No results recorded yet.</p>
+                  <p className="text-sm text-slate-500">No lab results available yet.</p>
                 ) : (
                   <div className="space-y-3">
-                    {labResults.map((r: any, i: number) => (
-                      <div key={i} className="bg-white/60 rounded-xl p-4 border border-blue-100/50">
-                        <div className="flex justify-between items-start mb-1">
-                          <span className="text-xs font-black text-slate-700 uppercase tracking-wide">{r.test_type}</span>
-                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Done</span>
-                        </div>
-                        <p className="text-sm font-bold text-slate-800 mt-1">{r.result || 'No result recorded'}</p>
-                        {r.notes && <p className="text-[10px] text-slate-400 mt-1">Notes: {r.notes}</p>}
+                    {labResults.map((result: any, index: number) => (
+                      <div key={index} className="rounded-2xl border border-slate-200 bg-white p-3">
+                        <p className="text-sm font-bold text-slate-800">{result.test_type}</p>
+                        <p className="text-sm text-slate-600 mt-1">{result.result || 'Result pending'}</p>
+                        {result.notes && <p className="text-xs text-slate-500 mt-1">{result.notes}</p>}
                       </div>
                     ))}
                   </div>
                 )}
               </div>
             )}
-
-            {/* ── Addendum (results_ready mode) ── */}
-            {isResultsReady && (
-              <div className="border border-primary-200/50 rounded-2xl p-5 bg-primary-50/20">
-                <div className="flex items-center gap-2 mb-4">
-                  <ClipboardList className="w-4 h-4 text-primary-500" />
-                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Addendum — Final Assessment</h4>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className={labelCls}>Final Diagnosis <span className="text-red-400">*</span></label>
-                    <input value={addendumDiagnosis} onChange={e => setAddendumDiagnosis(e.target.value)}
-                      placeholder="Confirmed diagnosis after lab results"
-                      className={inputCls}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Treatment Plan</label>
-                    <textarea rows={2} value={addendumPlan} onChange={e => setAddendumPlan(e.target.value)}
-                      placeholder="Updated management plan based on results..."
-                      className={`${inputCls} resize-none`}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Additional Notes</label>
-                    <textarea rows={2} value={addendumNotes} onChange={e => setAddendumNotes(e.target.value)}
-                      placeholder="Any additional observations post lab review..."
-                      className={`${inputCls} resize-none`}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── Additional Prescriptions (results_ready / addendum flow) ── */}
-            {isResultsReady && (
-              <div className="border border-teal-200/50 rounded-2xl p-5 bg-teal-50/20">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Pill className="w-4 h-4 text-teal-600" />
-                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Additional Prescriptions</h4>
-                    {addRxItems.filter(r => r.drug_name.trim()).length > 0 && (
-                      <span className="bg-teal-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full">
-                        {addRxItems.filter(r => r.drug_name.trim()).length}
-                      </span>
-                    )}
-                    {addRxSent && (
-                      <span className="flex items-center gap-1 text-[9px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
-                        <CheckCircle2 className="w-2.5 h-2.5" /> Sent to Pharmacy
-                      </span>
-                    )}
-                  </div>
-                  {!addRxSent && (
-                    <button type="button" onClick={addAddRxItem}
-                      className="text-teal-600 text-[10px] font-black uppercase tracking-wider hover:text-teal-700 px-3 py-1.5 rounded-lg hover:bg-teal-100 transition-colors">
-                      + Add Drug
-                    </button>
-                  )}
-                </div>
-
-                <p className="text-[10px] text-slate-400 italic mb-3">
-                  These drugs will be added on top of any earlier prescription and sent to the pharmacy when you finalize.
-                </p>
-
-                {addRxItems.length === 0 ? (
-                  <div className="text-center py-5">
-                    <Pill className="w-7 h-7 text-teal-200 mx-auto mb-2" />
-                    <p className="text-xs text-slate-400 italic">No additional drugs. Click &ldquo;+ Add Drug&rdquo; to prescribe based on lab results.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 mb-4">
-                    {addRxItems.map((rx, i) => {
-                      const suggestions = getSuggestions(rx.drug_name);
-                      return (
-                        <div key={i} className={cn('bg-white rounded-2xl border shadow-sm overflow-visible', addRxSent ? 'border-emerald-100 opacity-80' : 'border-teal-100')}>
-                          {/* Drug name row */}
-                          <div className="p-3.5 flex gap-2 items-center">
-                            <div className="w-6 h-6 rounded-full bg-teal-100 text-teal-600 text-[10px] font-black flex items-center justify-center shrink-0">
-                              {i + 1}
-                            </div>
-                            <div className="relative flex-1 min-w-0">
-                              <input
-                                value={rx.drug_name}
-                                onChange={e => {
-                                  if (!addRxSent) {
-                                    updateAddRxItem(i, { drug_name: e.target.value, in_stock: null });
-                                    setAddRxDropdownIdx(i);
-                                    if (e.target.value.trim()) setAddRxNameError(false);
-                                  }
-                                }}
-                                onFocus={() => !addRxSent && setAddRxDropdownIdx(i)}
-                                onBlur={() => setTimeout(() => setAddRxDropdownIdx(null), 150)}
-                                placeholder="Type drug name to search pharmacy inventory…"
-                                className={cn(
-                                  rxInputCls, 'text-sm py-2.5',
-                                  addRxSent ? 'cursor-default opacity-80' : 'border-teal-400 focus:border-teal-500 focus:ring-teal-400/30',
-                                  addRxNameError && !rx.drug_name.trim() && '!border-red-400 !bg-red-50 placeholder:!text-red-400 focus:!ring-red-400/30'
-                                )}
-                                readOnly={addRxSent}
-                              />
-                              {addRxNameError && !rx.drug_name.trim() && (
-                                <p className="text-[10px] text-red-500 font-bold mt-1 ml-1">← Type the drug name here first</p>
-                              )}
-                              {!addRxSent && addRxDropdownIdx === i && suggestions.length > 0 && (
-                                <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
-                                  {suggestions.map((item: any) => (
-                                    <button key={item.id} type="button"
-                                      onMouseDown={() => { updateAddRxItem(i, { drug_name: item.name, in_stock: item.quantity > 0 }); setAddRxDropdownIdx(null); }}
-                                      className="w-full px-4 py-2.5 text-left hover:bg-teal-50 flex justify-between items-center border-b border-gray-50 last:border-0">
-                                      <span className="text-xs font-bold text-gray-800">{item.name}</span>
-                                      <span className={cn('text-[9px] font-bold px-2 py-0.5 rounded ml-2 shrink-0', item.quantity > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500')}>
-                                        {item.quantity > 0 ? `${item.quantity} in stock` : 'Out of stock'}
-                                      </span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            {rx.in_stock === false && <span className="text-[9px] font-bold px-2 py-1 bg-red-50 text-red-500 rounded-lg shrink-0">Out of stock</span>}
-                            {rx.in_stock === true  && <span className="text-[9px] font-bold px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg shrink-0">In stock</span>}
-                            {!addRxSent && (
-                              <button onClick={() => removeAddRxItem(i)} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 shrink-0 transition-colors">
-                                <X className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                          {/* Dosage fields */}
-                          <div className="px-3.5 pb-3.5 grid grid-cols-2 gap-2 border-t border-teal-50 pt-3 bg-teal-50/20">
-                            <div>
-                              <label className={labelCls}>Dosage</label>
-                              <input value={rx.dosage} onChange={e => !addRxSent && updateAddRxItem(i, { dosage: e.target.value })}
-                                placeholder="e.g. 500mg" className={cn(rxInputCls, addRxSent && 'cursor-default opacity-80')} readOnly={addRxSent} />
-                            </div>
-                            <div>
-                              <label className={labelCls}>Frequency</label>
-                              <input value={rx.frequency} onChange={e => !addRxSent && updateAddRxItem(i, { frequency: e.target.value })}
-                                placeholder="e.g. TDS, BD, OD" className={cn(rxInputCls, addRxSent && 'cursor-default opacity-80')} readOnly={addRxSent} />
-                            </div>
-                            <div>
-                              <label className={labelCls}>Duration <span className="text-slate-300 normal-case font-medium">(days)</span></label>
-                              <input value={rx.duration} onChange={e => !addRxSent && updateAddRxItem(i, { duration: e.target.value })}
-                                placeholder="e.g. 5" className={cn(rxInputCls, addRxSent && 'cursor-default opacity-80')} readOnly={addRxSent} />
-                            </div>
-                            <div>
-                              <label className={labelCls}>Quantity <span className="text-slate-300 normal-case font-medium">(tablets/units)</span></label>
-                              <input value={rx.quantity} onChange={e => !addRxSent && updateAddRxItem(i, { quantity: e.target.value })}
-                                placeholder="e.g. 15" className={cn(rxInputCls, addRxSent && 'cursor-default opacity-80')} readOnly={addRxSent} />
-                            </div>
-                            <div className="col-span-2">
-                              <label className={labelCls}>Instructions</label>
-                              <input value={rx.instructions} onChange={e => !addRxSent && updateAddRxItem(i, { instructions: e.target.value })}
-                                placeholder="e.g. Take after meals" className={cn(rxInputCls, addRxSent && 'cursor-default opacity-80')} readOnly={addRxSent} />
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Send button — available before finalizing */}
-                {addRxItems.length > 0 && !addRxSent && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const valid = addRxItems.filter(r => r.drug_name.trim());
-                      if (!valid.length) { setAddRxNameError(true); toast.error('Type a drug name in the highlighted field'); return; }
-                      setAddRxNameError(false);
-                      try {
-                        const res = await fetch('/api/history/consultation/send-rx', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
-                          body: JSON.stringify({ patient_id: patient.id, prescriptions: valid }),
-                        });
-                        const data = await res.json().catch(() => ({}));
-                        if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
-                        setAddRxSent(true);
-                        toast.success(`Additional prescription sent — ${valid.length} drug${valid.length !== 1 ? 's' : ''}`);
-                      } catch (err: any) {
-                        toast.error('Failed to send — ' + err.message);
-                      }
-                    }}
-                    className="w-full py-3 flex items-center justify-center gap-2 text-white text-sm font-bold rounded-xl hover:brightness-110 active:scale-[0.99] transition-all"
-                    style={{ backgroundColor: '#14b8a6' }}
-                  >
-                    <Send className="w-4 h-4" /> Send Additional Prescription to Pharmacy
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* ── Lab Requests (new consultation only) ── */}
-            {!isResultsReady && (
-              <div className="border border-white/30 rounded-2xl p-5 bg-white/20">
-                <div className="flex items-center gap-2 mb-4">
-                  <Beaker className="w-4 h-4 text-amber-500" />
-                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Lab Tests</h4>
-                  {labTests.length > 0 && labFlow === 'idle' && (
-                    <span className="bg-amber-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full">{labTests.length}</span>
-                  )}
-                </div>
-
-                {labFlow === 'sent' ? (
-                  /* ── Sent: show two action options ── */
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span className="text-xs font-bold text-emerald-700">
-                        Lab request sent — {labTests.length} test{labTests.length !== 1 ? 's' : ''} queued for lab technician
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {labTests.map((t, i) => (
-                        <span key={i} className="bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold px-2.5 py-1 rounded-full">{t}</span>
-                      ))}
-                    </div>
-                    <div className="bg-amber-50 border border-amber-200/70 rounded-xl p-4">
-                      <p className="text-xs font-bold text-amber-800 mb-3">Lab request has been sent. How would you like to proceed?</p>
-                      <div className="flex gap-2">
-                        <button onClick={handleWaitForResults} disabled={submitting}
-                          className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5">
-                          {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Hourglass className="w-3 h-3" />}
-                          Wait for Lab Results
-                        </button>
-                        <button onClick={() => setLabFlow('skipped')}
-                          className="flex-1 py-2.5 bg-white border border-amber-200 text-amber-700 text-xs font-bold rounded-xl hover:bg-amber-50 transition-colors">
-                          Proceed Without Results
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                ) : labFlow === 'skipped' ? (
-                  /* ── Skipped: readonly chips ── */
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-[10px] font-black text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">Proceeding Without Lab Results</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {labTests.map((t, i) => (
-                        <span key={i} className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2.5 py-1 rounded-full">{t}</span>
-                      ))}
-                    </div>
-                  </div>
-
-                ) : (
-                  /* ── Idle: input + chips + request button ── */
-                  <div>
-                    <div className="flex gap-2 mb-3">
-                      <input
-                        value={labInput}
-                        onChange={e => setLabInput(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLabTest(); } }}
-                        placeholder="e.g. FBC, Malaria RDT, Blood sugar, Urinalysis"
-                        className={`${inputCls} flex-1`}
-                      />
-                      <button onClick={addLabTest}
-                        className="px-5 py-2 bg-primary-500 hover:bg-primary-600 text-white text-xs font-bold rounded-xl transition-colors shrink-0">
-                        Add
-                      </button>
-                    </div>
-
-                    {labTests.length > 0 ? (
-                      <div className="flex flex-wrap gap-2 mb-4">
-                        {labTests.map((t, i) => (
-                          <span key={i} className="flex items-center gap-1.5 bg-primary-50 border border-primary-100 text-primary-700 text-[10px] font-bold px-2.5 py-1.5 rounded-full">
-                            {t}
-                            <button onClick={() => removeLabTest(i)} className="hover:text-red-500 transition-colors ml-0.5">
-                              <X className="w-2.5 h-2.5" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-400 italic text-center py-3 mb-1">No tests added. Type a test name and press Add or Enter.</p>
-                    )}
-
-                    <button
-                      onClick={handleRequestLabs}
-                      disabled={sendingLabs || labTests.length === 0}
-                      className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
-                    >
-                      {sendingLabs
-                        ? <><Loader2 className="w-3 h-3 animate-spin" /> Sending to Lab…</>
-                        : <><FlaskConical className="w-3 h-3" /> Request Lab Tests ({labTests.length} test{labTests.length !== 1 ? 's' : ''})</>
-                      }
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── Prescriptions (new consultation only) ── */}
-            {!isResultsReady && (
-              <div className="border border-white/30 rounded-2xl p-5 bg-white/20">
-                {/* Header */}
-                <div className="flex justify-between items-center mb-4">
-                  <div className="flex items-center gap-2">
-                    <Pill className="w-4 h-4 text-primary-500" />
-                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Prescription</h4>
-                    {validRxCount > 0 && (
-                      <span className="bg-primary-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full">{validRxCount}</span>
-                    )}
-                    {rxSent && (
-                      <span className="flex items-center gap-1 text-[9px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
-                        <CheckCircle2 className="w-2.5 h-2.5" /> Sent
-                      </span>
-                    )}
-                  </div>
-                  <button type="button" onClick={addRxItem}
-                    className="text-primary-600 text-[10px] font-black uppercase tracking-wider hover:text-primary-700 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors">
-                    + Add Drug
-                  </button>
-                </div>
-
-                {/* Drug cards — always shown */}
-                {rxItems.length === 0 ? (
-                  <div className="text-center py-6">
-                    <Pill className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                    <p className="text-xs text-slate-400 italic">No medications prescribed yet. Click &ldquo;+ Add Drug&rdquo; to begin.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 mb-4">
-                    {rxItems.map((rx, i) => {
-                      const suggestions = getSuggestions(rx.drug_name);
-                      return (
-                        <div key={i} className={cn("bg-white rounded-2xl border shadow-sm overflow-visible", rxSent ? "border-emerald-100 opacity-80" : "border-gray-100")}>
-                          {/* Drug name row */}
-                          <div className="p-3.5 flex gap-2 items-center">
-                            <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-600 text-[10px] font-black flex items-center justify-center shrink-0">
-                              {i + 1}
-                            </div>
-                            <div className="relative flex-1 min-w-0">
-                              <input
-                                value={rx.drug_name}
-                                onChange={e => { if (!rxSent) { updateRxItem(i, { drug_name: e.target.value, in_stock: null, inventory_id: null }); setOpenDropdownIdx(i); if (e.target.value.trim()) setRxNameError(false); } }}
-                                onFocus={() => !rxSent && setOpenDropdownIdx(i)}
-                                onBlur={() => setTimeout(() => setOpenDropdownIdx(null), 150)}
-                                placeholder="Type drug name to search pharmacy inventory…"
-                                className={cn(
-                                  rxInputCls, 'text-sm py-2.5',
-                                  rxSent ? 'cursor-default opacity-80' : 'border-teal-400 focus:border-teal-500 focus:ring-teal-400/30',
-                                  rxNameError && !rx.drug_name.trim() && '!border-red-400 !bg-red-50 placeholder:!text-red-400 focus:!ring-red-400/30'
-                                )}
-                                readOnly={rxSent}
-                              />
-                              {rxNameError && !rx.drug_name.trim() && (
-                                <p className="text-[10px] text-red-500 font-bold mt-1 ml-1">← Type the drug name here first</p>
-                              )}
-                              {!rxSent && openDropdownIdx === i && suggestions.length > 0 && (
-                                <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
-                                  {suggestions.map((item: any) => (
-                                    <button key={item.id} type="button"
-                                      onMouseDown={() => {
-                                        updateRxItem(i, { drug_name: item.name, in_stock: item.quantity > 0, inventory_id: item.id });
-                                        setOpenDropdownIdx(null);
-                                      }}
-                                      className="w-full px-4 py-2.5 text-left hover:bg-primary-50 flex justify-between items-center border-b border-gray-50 last:border-0"
-                                    >
-                                      <span className="text-xs font-bold text-gray-800">{item.name}</span>
-                                      <span className={cn('text-[9px] font-bold px-2 py-0.5 rounded ml-2 shrink-0', item.quantity > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500')}>
-                                        {item.quantity > 0 ? `${item.quantity} in stock` : 'Out of stock'}
-                                      </span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            {rx.in_stock === false && <span className="text-[9px] font-bold px-2 py-1 bg-red-50 text-red-500 rounded-lg shrink-0">Out of stock</span>}
-                            {rx.in_stock === true && <span className="text-[9px] font-bold px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg shrink-0">In stock</span>}
-                            {!rxSent && (
-                              <button onClick={() => removeRxItem(i)} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 shrink-0 transition-colors">
-                                <X className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Dosage fields */}
-                          <div className="px-3.5 pb-3.5 grid grid-cols-2 gap-2 border-t border-gray-100 pt-3 bg-slate-50/60">
-                            <div>
-                              <label className={labelCls}>Dosage</label>
-                              <input value={rx.dosage} onChange={e => !rxSent && updateRxItem(i, { dosage: e.target.value })}
-                                placeholder="e.g. 500mg" className={cn(rxInputCls, rxSent && 'cursor-default opacity-80')} readOnly={rxSent} />
-                            </div>
-                            <div>
-                              <label className={labelCls}>Frequency</label>
-                              <input value={rx.frequency} onChange={e => !rxSent && updateRxItem(i, { frequency: e.target.value })}
-                                placeholder="e.g. TDS, BD, OD" className={cn(rxInputCls, rxSent && 'cursor-default opacity-80')} readOnly={rxSent} />
-                            </div>
-                            <div>
-                              <label className={labelCls}>Duration <span className="text-slate-300 normal-case font-medium">(days)</span></label>
-                              <input value={rx.duration} onChange={e => !rxSent && updateRxItem(i, { duration: e.target.value })}
-                                placeholder="e.g. 5" className={cn(rxInputCls, rxSent && 'cursor-default opacity-80')} readOnly={rxSent} />
-                            </div>
-                            <div>
-                              <label className={labelCls}>Quantity <span className="text-slate-300 normal-case font-medium">(tablets/units)</span></label>
-                              <input value={rx.quantity} onChange={e => !rxSent && updateRxItem(i, { quantity: e.target.value })}
-                                placeholder="e.g. 15" className={cn(rxInputCls, rxSent && 'cursor-default opacity-80')} readOnly={rxSent} />
-                            </div>
-                            <div className="col-span-2">
-                              <label className={labelCls}>Instructions</label>
-                              <input value={rx.instructions} onChange={e => !rxSent && updateRxItem(i, { instructions: e.target.value })}
-                                placeholder="e.g. Take after meals, avoid alcohol" className={cn(rxInputCls, rxSent && 'cursor-default opacity-80')} readOnly={rxSent} />
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Sent confirmation banner + Edit */}
-                {rxSent && (
-                  <div className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 mb-3">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <div>
-                        <p className="text-[10px] font-black text-emerald-700 uppercase tracking-wider">Prescription Sent to Pharmacy</p>
-                        <p className="text-xs text-emerald-600 mt-0.5">{validRxCount} drug{validRxCount !== 1 ? 's' : ''} — pharmacy is preparing</p>
-                      </div>
-                    </div>
-                    <button onClick={() => setRxSent(false)}
-                      className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shrink-0">
-                      Edit
-                    </button>
-                  </div>
-                )}
-
-                {/* Prescribe button — always active when drug cards exist (validates on click, not on render) */}
-                {rxItems.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handlePrescribe}
-                    disabled={sendingRx}
-                    className="w-full py-3.5 flex items-center justify-center gap-2 text-white text-sm font-bold rounded-xl disabled:opacity-60 transition-all hover:brightness-110 active:scale-[0.99]"
-                    style={{ backgroundColor: rxSent ? '#4b5563' : 'var(--color-primary-500)' }}
-                  >
-                    {sendingRx
-                      ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending to Pharmacy…</>
-                      : rxSent
-                        ? <><Send className="w-4 h-4" /> Re-send Updated Prescription{validRxCount > 0 ? ` (${validRxCount})` : ''}</>
-                        : <><Send className="w-4 h-4" /> Prescribe — Send to Pharmacy{validRxCount > 0 ? ` (${validRxCount} drug${validRxCount !== 1 ? 's' : ''})` : ''}</>
-                    }
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* ── Follow-up ── */}
-            <div className="border border-white/30 rounded-2xl p-5 bg-white/20">
-              <div className="flex items-center gap-2 mb-4">
-                <Clock className="w-4 h-4 text-orange-500" />
-                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Schedule Follow-up / Review</h4>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className={labelCls}>Date</label>
-                  <input type="date" value={followup.date} onChange={e => setFollowup({ ...followup, date: e.target.value })} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Time</label>
-                  <input type="time" value={followup.time} onChange={e => setFollowup({ ...followup, time: e.target.value })} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Type</label>
-                  <select value={followup.type} onChange={e => setFollowup({ ...followup, type: e.target.value })} className={inputCls}>
-                    <option value="review">Review</option>
-                    <option value="follow-up">Follow-up</option>
-                    <option value="consultation">Special Consultation</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-          {/* ── Footer ── */}
-          <div className="px-8 py-5 border-t border-white/20 flex-shrink-0 flex justify-end">
-            {isResultsReady ? (
-              <button onClick={handleFinalize} disabled={submitting}
-                className="bg-primary-500 hover:bg-primary-600 text-white font-bold px-10 py-3.5 rounded-2xl flex items-center gap-2 shadow-lg shadow-primary-500/25 active:scale-95 transition-all text-sm">
-                {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><ClipboardList className="w-5 h-5" /> Finalize Consultation &amp; Generate Bill</>}
-              </button>
-            ) : (
-              <button onClick={handleComplete} disabled={submitting || labFlow === 'sent'}
-                className="bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white font-bold px-10 py-3.5 rounded-2xl flex items-center gap-2 shadow-lg shadow-primary-500/25 active:scale-95 transition-all text-sm">
-                {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><ClipboardList className="w-5 h-5" /> Complete Visit &amp; Generate Bill</>}
-              </button>
-            )}
           </div>
         </div>
-      </motion.div>
 
-      {/* ── Prescription Sent Confirmation Dialog ── */}
-      <AnimatePresence>
-        {prescSentDialog && (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center p-6">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-800">Prescription Sent to Pharmacy</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">The pharmacy has received the following medications</p>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 rounded-2xl p-4 mb-4 space-y-2">
-                {rxItems.filter(r => r.drug_name.trim()).map((m, i) => (
-                  <div key={i} className="flex justify-between items-start py-1.5 border-b border-slate-100 last:border-0">
-                    <div>
-                      <p className="text-xs font-bold text-slate-800">{m.drug_name}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">{[m.dosage, m.frequency, m.duration].filter(Boolean).join(' · ')}{m.quantity ? ` · Qty: ${m.quantity}` : ''}</p>
-                      {m.instructions && <p className="text-[10px] text-slate-400 italic">{m.instructions}</p>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <p className="text-xs text-slate-500 bg-blue-50 rounded-xl px-4 py-3 mb-5">
-                You can now <strong>complete the consultation and generate the bill</strong>. The cashier will collect payment before the pharmacy dispenses the medications.
-              </p>
-
-              <div className="flex gap-3">
-                <button onClick={() => setPrescSentDialog(false)}
-                  className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors">
-                  Stay on Page
-                </button>
-                <button
-                  onClick={() => { setPrescSentDialog(false); handleComplete(); }}
-                  disabled={submitting}
-                  className="flex-1 py-2.5 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all"
-                  style={{ backgroundColor: 'var(--color-primary-500)' }}
-                >
-                  {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
-                  Complete &amp; Generate Bill
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+        <div className="px-6 py-5 border-t border-slate-200 bg-slate-50 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <button onClick={onClose} className="w-full sm:w-auto px-6 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleComplete} disabled={submitting}
+            className="w-full sm:w-auto px-6 py-3 rounded-2xl text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {isResultsReady ? 'Finalize Consultation & Generate Bill' : 'Complete Consultation & Generate Bill'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

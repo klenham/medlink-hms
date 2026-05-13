@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Shield, Palette, Check, Moon, Sun, Timer } from 'lucide-react';
 import { toast } from 'sonner';
 import { getSettings, saveSettings, applySettings, ACCENT_COLORS, AppSettings } from '../lib/settings';

@@ -16,6 +16,8 @@ import Profile from './pages/Profile';
 import SettingsPage from './pages/Settings';
 import Layout from './components/Layout';
 import Messages from './pages/Messages';
+import Claims from './pages/Claims';
+import ClaimEditor from './pages/ClaimEditor';
 import Appointments from './pages/Appointments';
 import CalendarPage from './pages/Calendar';
 import Departments from './pages/Departments';
@@ -84,6 +86,8 @@ export default function App() {
           <Route path="/staff"        element={<Staff />} />
           <Route path="/appointments" element={<Appointments />} />
           <Route path="/departments"  element={<Departments />} />
+          <Route path="/claims"       element={<Claims />} />
+          <Route path="/claims/:id"   element={<ClaimEditor />} />
           <Route path="/calendar"     element={<CalendarPage />} />
           <Route path="/messages"     element={<Messages />} />
         </Route>

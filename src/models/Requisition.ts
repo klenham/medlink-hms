@@ -6,5 +6,5 @@ const RequisitionSchema = new mongoose.Schema({
   status:       { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
 }, { timestamps: true });
 
-const Requisition = mongoose.models.Requisition || mongoose.model('Requisition', RequisitionSchema);
+const Requisition = (mongoose.models.Requisition || mongoose.model('Requisition', RequisitionSchema)) as mongoose.Model<any>;
 export default Requisition;
