@@ -7,5 +7,5 @@ const NoticeSchema = new mongoose.Schema({
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
-const Notice = mongoose.models.Notice || mongoose.model('Notice', NoticeSchema);
+const Notice = (mongoose.models.Notice || mongoose.model('Notice', NoticeSchema)) as mongoose.Model<any>;
 export default Notice;

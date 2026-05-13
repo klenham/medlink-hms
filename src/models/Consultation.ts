@@ -12,5 +12,5 @@ const ConsultationSchema = new mongoose.Schema({
   addendum_plan:      { type: String, default: '' },
 }, { timestamps: true });
 
-const Consultation = mongoose.models.Consultation || mongoose.model('Consultation', ConsultationSchema);
+const Consultation = (mongoose.models.Consultation || mongoose.model('Consultation', ConsultationSchema)) as mongoose.Model<any>;
 export default Consultation;

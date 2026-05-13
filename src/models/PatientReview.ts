@@ -8,5 +8,5 @@ const PatientReviewSchema = new mongoose.Schema({
   status:      { type: String, enum: ['scheduled', 'notified', 'completed', 'missed'], default: 'scheduled' },
 }, { timestamps: true });
 
-const PatientReview = mongoose.models.PatientReview || mongoose.model('PatientReview', PatientReviewSchema);
+const PatientReview = (mongoose.models.PatientReview || mongoose.model('PatientReview', PatientReviewSchema)) as mongoose.Model<any>;
 export default PatientReview;

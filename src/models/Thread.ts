@@ -7,5 +7,5 @@ const ThreadSchema = new mongoose.Schema({
   lastSenderId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
-const Thread = mongoose.models.Thread || mongoose.model('Thread', ThreadSchema);
+const Thread = (mongoose.models.Thread || mongoose.model('Thread', ThreadSchema)) as mongoose.Model<any>;
 export default Thread;

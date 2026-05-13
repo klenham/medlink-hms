@@ -9,5 +9,5 @@ const BillSchema = new mongoose.Schema({
   issued_date:    { type: Date, default: Date.now },
 }, { timestamps: true });
 
-const Bill = mongoose.models.Bill || mongoose.model('Bill', BillSchema);
+const Bill = (mongoose.models.Bill || mongoose.model('Bill', BillSchema)) as mongoose.Model<any>;
 export default Bill;

@@ -627,6 +627,14 @@ function ConsultationModal({ patient, onClose, onComplete }: {
 
   const [inventory, setInventory] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiMessage, setAiMessage] = useState('');
+  const [aiProvider, setAiProvider] = useState<'groq' | 'ollama' | ''>('');
+  const [aiImprovedNote, setAiImprovedNote] = useState('');
+  const [aiICD10Codes, setAiICD10Codes] = useState<string[]>([]);
+  const [aiMedications, setAiMedications] = useState<string[]>([]);
+  const [aiDischargeSummary, setAiDischargeSummary] = useState('');
+  const [aiFollowUpInstructions, setAiFollowUpInstructions] = useState('');
 
   useEffect(() => {
     fetch('/api/stations/pharmacy/inventory', {
@@ -676,6 +684,75 @@ function ConsultationModal({ patient, onClose, onComplete }: {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
+  };
+
+  const runAiRequest = async (endpoint: string, body: object, onResult: (data: any) => void) => {
+    setAiLoading(true);
+    setAiMessage('Contacting AI provider...');
+    setAiProvider('');
+    setAiImprovedNote('');
+    setAiICD10Codes([]);
+    setAiMedications([]);
+    setAiDischargeSummary('');
+    setAiFollowUpInstructions('');
+
+    try {
+      const data = await apiPost(endpoint, body);
+      setAiProvider(data.provider || '');
+      setAiMessage(data.provider === 'groq'
+        ? 'Using Groq AI...'
+        : data.provider === 'ollama'
+          ? 'Using Local AI (Ollama - Offline)...'
+          : 'AI provider response received.'
+      );
+      onResult(data);
+    } catch (err: any) {
+      setAiMessage('AI request failed.');
+      toast.error('AI request failed', { description: err.message });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleImproveWithAI = async () => {
+    if (!illness.trim() && !treatment.trim() && !notes.trim()) {
+      toast.error('Enter consultation details before using the AI assistant');
+      return;
+    }
+    await runAiRequest('/api/ai/consultation/improve', { illness, treatment, notes }, (data) => {
+      setAiImprovedNote(data.after || data.raw || 'No improvement returned.');
+      setAiICD10Codes(Array.isArray(data.icd10Codes) ? data.icd10Codes : []);
+    });
+  };
+
+  const handleSuggestMedications = async () => {
+    if (!illness.trim() && !treatment.trim() && !notes.trim()) {
+      toast.error('Enter consultation details before asking for medication suggestions');
+      return;
+    }
+    await runAiRequest('/api/ai/consultation/medications', { illness, treatment, notes }, (data) => {
+      if (Array.isArray(data.suggestedMedications) && data.suggestedMedications.length) {
+        setAiMedications(data.suggestedMedications.map(String));
+      } else {
+        setAiMedications([String(data.raw || 'No medication suggestions received.')]);
+      }
+    });
+  };
+
+  const handleGenerateDischargeSummary = async () => {
+    if (!illness.trim() && !treatment.trim() && !notes.trim()) {
+      toast.error('Enter consultation details before generating a discharge summary');
+      return;
+    }
+    await runAiRequest('/api/ai/consultation/discharge', {
+      patientName: patient.name,
+      illness,
+      treatment,
+      notes,
+    }, (data) => {
+      setAiDischargeSummary(data.dischargeSummary || data.raw || 'No discharge note returned.');
+      setAiFollowUpInstructions(data.followUpInstructions || '');
+    });
   };
 
   /* Send labs to lab station */
@@ -832,13 +909,13 @@ function ConsultationModal({ patient, onClose, onComplete }: {
   const validRxCount = rxItems.filter(r => r.drug_name.trim()).length;
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[70] flex items-center justify-center p-6">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[70] flex items-center justify-center p-4">
       <motion.div
         initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-        className="glass-card w-full max-w-5xl p-0 h-[90vh] flex overflow-hidden"
+        className="glass-card w-full max-w-[98vw] p-0 h-[95vh] flex overflow-hidden"
       >
         {/* ── Left: Patient Summary ── */}
-        <div className="w-72 flex-shrink-0 glass-dark border-r border-white/20 flex flex-col overflow-y-auto">
+        <div className="w-80 flex-shrink-0 glass-dark border-r border-white/20 flex flex-col overflow-y-auto">
           <div className="p-6">
             {isResultsReady && (
               <div className="mb-4 flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-2.5 rounded-xl">
@@ -903,10 +980,88 @@ function ConsultationModal({ patient, onClose, onComplete }: {
             <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors"><X className="w-5 h-5"/></button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
+          <div className="px-8 py-6 space-y-6">
+            <div className="border border-slate-200 rounded-3xl bg-slate-50/80 p-5">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
+                <div>
+                  <p className="text-sm font-bold text-slate-800">AI Clinical Assistant</p>
+                  <p className="text-xs text-slate-500 mt-1">Use the assistant to improve notes, suggest medications, or generate a discharge summary. Review all AI suggestions before applying them.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleImproveWithAI}
+                    disabled={aiLoading}
+                    className="rounded-xl bg-indigo-500 text-white px-4 py-2 text-xs font-bold uppercase tracking-widest hover:bg-indigo-600 disabled:opacity-50"
+                  >
+                    Improve with AI
+                  </button>
+                  <button
+                    onClick={handleSuggestMedications}
+                    disabled={aiLoading}
+                    className="rounded-xl bg-teal-500 text-white px-4 py-2 text-xs font-bold uppercase tracking-widest hover:bg-teal-600 disabled:opacity-50"
+                  >
+                    Suggest Medications
+                  </button>
+                  <button
+                    onClick={handleGenerateDischargeSummary}
+                    disabled={aiLoading}
+                    className="rounded-xl bg-slate-900 text-white px-4 py-2 text-xs font-bold uppercase tracking-widest hover:bg-slate-700 disabled:opacity-50"
+                  >
+                    Generate Discharge Note
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <p className="text-[10px] uppercase tracking-widest font-black text-slate-400">AI status</p>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <span className="text-sm text-slate-700">{aiProvider ? (aiProvider === 'groq' ? 'Using Groq AI…' : 'Using Local AI (Ollama - Offline)…') : 'AI tools are idle.'}</span>
+                  {aiLoading && <span className="text-xs text-slate-500">Fetching AI suggestions…</span>}
+                </div>
+              </div>
+
+              {aiImprovedNote && (
+                <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <p className="text-xs uppercase tracking-widest font-black text-slate-400">AI improved clinical note</p>
+                    {aiICD10Codes.length > 0 && (
+                      <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-full">ICD-10: {aiICD10Codes.join(', ')}</span>
+                    )}
+                  </div>
+                  <pre className="whitespace-pre-wrap text-sm text-slate-700 leading-6">{aiImprovedNote}</pre>
+                </div>
+              )}
+
+              {aiMedications.length > 0 && (
+                <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs uppercase tracking-widest font-black text-slate-400 mb-3">Medication suggestions</p>
+                  <ul className="list-disc list-inside text-sm text-slate-700 space-y-2">
+                    {aiMedications.map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {aiDischargeSummary && (
+                <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs uppercase tracking-widest font-black text-slate-400 mb-3">Patient-friendly discharge note</p>
+                  <pre className="whitespace-pre-wrap text-sm text-slate-700 leading-6">{aiDischargeSummary}</pre>
+                  {aiFollowUpInstructions && (
+                    <div className="mt-4 rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">
+                      <p className="font-bold text-slate-800 text-[11px] uppercase tracking-widest mb-1">Follow-up instructions</p>
+                      <p>{aiFollowUpInstructions}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-10 py-8 space-y-7">
 
             {/* ── Diagnosis + Treatment + Notes ── */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-6">
               <div>
                 <label className={labelCls}>{isResultsReady ? 'Preliminary Diagnosis' : 'Primary Diagnosis / Chief Complaint'}</label>
                 <input value={illness} onChange={e => setIllness(e.target.value)}
@@ -923,10 +1078,21 @@ function ConsultationModal({ patient, onClose, onComplete }: {
                   readOnly={isResultsReady}
                 />
               </div>
+              <div>
+                <label className={labelCls}>Follow-up Type</label>
+                <select value={followup.type} onChange={e => setFollowup({ ...followup, type: e.target.value })}
+                  className={inputCls}
+                >
+                  <option value="review">Follow-up Review</option>
+                  <option value="lab">Lab Test</option>
+                  <option value="imaging">Imaging</option>
+                  <option value="specialist">Specialist Referral</option>
+                </select>
+              </div>
             </div>
             <div>
               <label className={labelCls}>History &amp; Examination Notes</label>
-              <textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)}
+              <textarea rows={5} value={notes} onChange={e => setNotes(e.target.value)}
                 placeholder="Clinical observations, symptoms, examination findings, history..."
                 className={cn(`${inputCls} resize-none`, isResultsReady && 'opacity-70')}
                 readOnly={isResultsReady}

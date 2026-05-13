@@ -7,5 +7,5 @@ const PrescriptionSchema = new mongoose.Schema({
   status:      { type: String, enum: ['pending', 'ready', 'collected'], default: 'pending' },
 }, { timestamps: true });
 
-const Prescription = mongoose.models.Prescription || mongoose.model('Prescription', PrescriptionSchema);
+const Prescription = (mongoose.models.Prescription || mongoose.model('Prescription', PrescriptionSchema)) as mongoose.Model<any>;
 export default Prescription;

@@ -12,5 +12,5 @@ const AdmissionSchema = new mongoose.Schema({
   notes:          { type: String, default: '' },
 }, { timestamps: true });
 
-const Admission = mongoose.models.Admission || mongoose.model('Admission', AdmissionSchema);
+const Admission = (mongoose.models.Admission || mongoose.model('Admission', AdmissionSchema)) as mongoose.Model<any>;
 export default Admission;

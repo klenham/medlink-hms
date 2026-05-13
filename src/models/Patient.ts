@@ -20,5 +20,5 @@ const PatientSchema = new mongoose.Schema({
 
 PatientSchema.index({ name: 'text', patient_id: 1 });
 
-const Patient = mongoose.models.Patient || mongoose.model('Patient', PatientSchema);
+const Patient = (mongoose.models.Patient || mongoose.model('Patient', PatientSchema)) as mongoose.Model<any>;
 export default Patient;

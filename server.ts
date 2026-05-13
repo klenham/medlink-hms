@@ -10,6 +10,8 @@ import adminRoutes  from './src/routes/admin.js';
 import historyRoutes from './src/routes/history.js';
 import stationRoutes from './src/routes/stations.js';
 import rolesRoutes    from './src/routes/roles.js';
+import aiRoutes      from './src/routes/ai.js';
+import claimsRoutes  from './src/routes/claims.js';
 import messagesRoutes      from './src/routes/messages.js';
 import notificationRoutes from './src/routes/notifications.js';
 
@@ -31,6 +33,8 @@ async function startServer() {
   app.use('/api/history',  historyRoutes);
   app.use('/api/stations', stationRoutes);
   app.use('/api/roles',    rolesRoutes);
+  app.use('/api/ai',       aiRoutes);
+  app.use('/api/claims',   claimsRoutes);
   app.use('/api/messages',       messagesRoutes);
   app.use('/api/notifications',  notificationRoutes);
 

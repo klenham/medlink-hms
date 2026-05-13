@@ -20,5 +20,5 @@ const UserSchema = new mongoose.Schema({
   permissions: { type: [String], default: [] },
 }, { timestamps: true });
 
-const User = mongoose.models.User || mongoose.model('User', UserSchema);
+const User = (mongoose.models.User || mongoose.model('User', UserSchema)) as mongoose.Model<any>;
 export default User;

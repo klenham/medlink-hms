@@ -8,6 +8,7 @@ import Requisition from '../models/Requisition.js';
 import Bill from '../models/Bill.js';
 import Patient from '../models/Patient.js';
 import Notification from '../models/Notification.js';
+import { createDraftClaimFromPrescription } from '../lib/claims.js';
 import { sendSSE } from '../lib/sse.js';
 
 const router = express.Router();
@@ -147,9 +148,16 @@ router.get('/pharmacy/pending', authenticateToken, async (req, res) => {
   }
 });
 
-router.put('/pharmacy/:id', authenticateToken, async (req, res) => {
+router.put('/pharmacy/:id', authenticateToken, async (req: any, res) => {
   try {
-    await Prescription.findByIdAndUpdate(req.params.id, { status: 'ready' });
+    const prescription = await Prescription.findByIdAndUpdate(req.params.id, { status: 'ready' }).lean() as any;
+    if (prescription && prescription.patient) {
+      try {
+        await createDraftClaimFromPrescription(req.params.id, req.user.id);
+      } catch {
+        // best-effort draft claim generation
+      }
+    }
     res.json({ message: 'Prescription marked as ready' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

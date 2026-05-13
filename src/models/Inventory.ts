@@ -10,5 +10,5 @@ const InventorySchema = new mongoose.Schema({
   unit_price:          { type: Number, default: 0 },
 }, { timestamps: true });
 
-const Inventory = mongoose.models.Inventory || mongoose.model('Inventory', InventorySchema);
+const Inventory = (mongoose.models.Inventory || mongoose.model('Inventory', InventorySchema)) as mongoose.Model<any>;
 export default Inventory;

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Shield, Palette, Check, Moon, Sun, Timer } from 'lucide-react';
 import { toast } from 'sonner';
 import { getSettings, saveSettings, applySettings, ACCENT_COLORS, AppSettings } from '../lib/settings';
@@ -11,6 +11,10 @@ export default function Settings({ onSave }: { onSave: (s: AppSettings) => void 
     const v = getSettings().inactivityTimeout;
     return v === 0 ? '' : String(v);
   });
+  const [aiSettings, setAiSettings] = useState({ groqApiKey: '', ollamaModel: 'llama2' });
+  const [aiLoading, setAiLoading] = useState(true);
+  const [aiSaveLoading, setAiSaveLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
 
   const update = (partial: Partial<AppSettings>) => {
     const next = saveSettings(partial);
@@ -34,6 +38,59 @@ export default function Settings({ onSave }: { onSave: (s: AppSettings) => void 
       const mins = Math.max(1, Math.min(480, parseInt(raw, 10) || 1));
       setTimeoutInput(String(mins));
       update({ inactivityTimeout: mins });
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/ai/settings', {
+          headers: { Authorization: `Bearer ${sessionStorage.getItem('token')}` },
+        });
+        if (!active) return;
+        if (res.status === 401 || res.status === 403) {
+          setAiError('AI settings are available to administrators only.');
+          return;
+        }
+        const data = await res.json();
+        setAiSettings({
+          groqApiKey: data.groqApiKey || '',
+          ollamaModel: data.ollamaModel || 'llama2',
+        });
+      } catch (err) {
+        if (active) setAiError('Unable to load AI settings.');
+      } finally {
+        if (active) setAiLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const handleAiSave = async () => {
+    setAiSaveLoading(true);
+    setAiError('');
+    try {
+      const res = await fetch('/api/ai/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessionStorage.getItem('token')}`,
+        },
+        body: JSON.stringify(aiSettings),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Save failed (${res.status})`);
+      }
+      const data = await res.json();
+      setAiSettings({ groqApiKey: data.groqApiKey || '', ollamaModel: data.ollamaModel || 'llama2' });
+      toast.success('AI settings saved');
+    } catch (err: any) {
+      setAiError(err?.message || 'Failed to save AI settings.');
+      toast.error(err?.message || 'Failed to save AI settings.');
+    } finally {
+      setAiSaveLoading(false);
     }
   };
 
@@ -182,6 +239,73 @@ export default function Settings({ onSave }: { onSave: (s: AppSettings) => void 
               </button>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* AI Integrations */}
+      <div className="glass-card p-8 space-y-7">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center flex-shrink-0">
+            <svg viewBox="0 0 24 24" className="w-5 h-5 text-primary-600" aria-hidden="true">
+              <path d="M12 2L4 7v6c0 5 3 9 8 9s8-4 8-9V7l-8-5z" fill="currentColor" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="font-bold text-gray-900">AI Integrations</h2>
+            <p className="text-xs text-gray-400">Configure the hybrid AI service for Groq and local Ollama fallback.</p>
+          </div>
+        </div>
+
+        {aiError && (
+          <div className="rounded-2xl bg-red-50 border border-red-100 p-4 text-sm text-red-700">
+            {aiError}
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 block">
+              Groq API Key
+            </label>
+            <input
+              type="password"
+              value={aiSettings.groqApiKey}
+              onChange={e => setAiSettings(prev => ({ ...prev, groqApiKey: e.target.value }))}
+              placeholder="Enter Groq API key"
+              className="w-full bg-surface-50 rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500 border-none text-sm text-gray-800"
+            />
+            <p className="text-xs text-gray-400 mt-2">
+              This key is used for the online AI provider. If it is missing or unavailable, the app falls back to local Ollama.
+            </p>
+          </div>
+
+          <div>
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 block">
+              Ollama Model
+            </label>
+            <input
+              type="text"
+              value={aiSettings.ollamaModel}
+              onChange={e => setAiSettings(prev => ({ ...prev, ollamaModel: e.target.value }))}
+              placeholder="e.g. llama2"
+              className="w-full bg-surface-50 rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500 border-none text-sm text-gray-800"
+            />
+            <p className="text-xs text-gray-400 mt-2">
+              The local Ollama model name to use when offline. The service is expected at <code>http://localhost:11434</code>.
+            </p>
+          </div>
+
+          <button
+            onClick={handleAiSave}
+            disabled={aiSaveLoading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-500 px-5 py-3 text-sm font-bold text-white transition hover:bg-primary-600 disabled:opacity-50"
+          >
+            {aiSaveLoading ? 'Saving AI settings…' : 'Save AI Settings'}
+          </button>
+
+          <p className="text-xs text-slate-400">
+            AI-generated output should always be reviewed by clinical staff before use.
+          </p>
         </div>
       </div>
     </div>

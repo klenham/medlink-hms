@@ -8,5 +8,5 @@ const PharmacyAmendmentSchema = new mongoose.Schema({
   reason:       { type: String },
 }, { timestamps: true });
 
-const PharmacyAmendment = mongoose.models.PharmacyAmendment || mongoose.model('PharmacyAmendment', PharmacyAmendmentSchema);
+const PharmacyAmendment = (mongoose.models.PharmacyAmendment || mongoose.model('PharmacyAmendment', PharmacyAmendmentSchema)) as mongoose.Model<any>;
 export default PharmacyAmendment;

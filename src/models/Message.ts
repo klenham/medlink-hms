@@ -7,5 +7,5 @@ const MessageSchema = new mongoose.Schema({
   readBy:  [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 }, { timestamps: true });
 
-const Message = mongoose.models.Message || mongoose.model('Message', MessageSchema);
+const Message = (mongoose.models.Message || mongoose.model('Message', MessageSchema)) as mongoose.Model<any>;
 export default Message;
